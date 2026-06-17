@@ -81,7 +81,7 @@ class Config(BaseSettings):
     schema_variant: SchemaVariant = SchemaVariant.ANSWER_V1
 
     # ---- Dataset (HotpotQA distractor dev set) ----
-    dataset_name: str = "hotpot_qa"
+    dataset_name: str = "hotpotqa/hotpot_qa"
     dataset_config: str = "distractor"
     dataset_split: str = "validation"
 
