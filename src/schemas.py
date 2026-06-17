@@ -10,6 +10,9 @@ strict structured-output model(s) returned by every agent step in the `enum` arm
     scope: AnswerScope           {full, partial, none}
     supporting_doc_ids: list[str]
 
+The agent's non-final steps reuse the same enums via `ContextGrade` (grade) and `RewriteQuery`
+(rewrite); `response_schema_for_node` maps each step to its model.
+
 All fields are required with no defaults. `to_openai_strict_schema` renders the canonical
 OpenAI strict-mode JSON schema (the one we log and verify), and `schema_sha256` hashes it
 deterministically for the provenance `schema_sha256` field. No API calls happen here.
@@ -21,11 +24,14 @@ import copy
 import enum
 import hashlib
 import json
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
 from src.config import SchemaVariant
+
+# Same node identifiers used by the provenance log; kept local to avoid cross-module coupling.
+NodeName = Literal["grade", "rewrite", "synthesize"]
 
 
 class ConfidenceLevel(str, enum.Enum):
@@ -59,6 +65,28 @@ class AnswerV1(BaseModel):
     supporting_doc_ids: list[str]
 
 
+class ContextGrade(BaseModel):
+    """Grade-step judgement on the retrieved context (reuses the shared enums).
+
+    `scope` = how well the retrieved context covers the question; `confidence` = confidence in
+    that judgement; `needs_more_context` = whether to rewrite the query and retrieve again.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    scope: AnswerScope
+    confidence: ConfidenceLevel
+    needs_more_context: bool
+
+
+class RewriteQuery(BaseModel):
+    """Rewrite-step output: the reformulated search query."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    query: str
+
+
 # One model per declared SchemaVariant. The fullest variant maps to the headline model.
 _SCHEMA_REGISTRY: dict[SchemaVariant, type[BaseModel]] = {
     SchemaVariant.ANSWER_V1: AnswerV1,
@@ -71,6 +99,21 @@ def get_response_schema(variant: SchemaVariant) -> type[BaseModel]:
         return _SCHEMA_REGISTRY[variant]
     except KeyError as exc:  # fail loud on an unregistered variant
         raise ValueError(f"No response schema registered for variant {variant!r}") from exc
+
+
+def response_schema_for_node(node: NodeName, variant: SchemaVariant) -> type[BaseModel]:
+    """Return the enum-arm structured-output model for a given agent step.
+
+    grade -> ContextGrade, rewrite -> RewriteQuery, synthesize -> the variant's response model.
+    Fails loud on an unknown node.
+    """
+    if node == "grade":
+        return ContextGrade
+    if node == "rewrite":
+        return RewriteQuery
+    if node == "synthesize":
+        return get_response_schema(variant)
+    raise ValueError(f"Unknown agent node {node!r}")
 
 
 def _is_object_node(node: dict[str, Any]) -> bool:

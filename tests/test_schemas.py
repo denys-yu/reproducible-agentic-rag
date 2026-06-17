@@ -13,8 +13,11 @@ from src.schemas import (
     AnswerScope,
     AnswerV1,
     ConfidenceLevel,
+    ContextGrade,
+    RewriteQuery,
     assert_strict_compliant,
     get_response_schema,
+    response_schema_for_node,
     schema_sha256,
     to_openai_strict_schema,
 )
@@ -134,3 +137,71 @@ def test_model_rejects_extra_fields():
             supporting_doc_ids=[],
             hallucinated="nope",  # extra="forbid"
         )
+
+
+# --- agent step models (ContextGrade / RewriteQuery) ------------------------------------------
+
+
+@pytest.mark.parametrize("model", [AnswerV1, ContextGrade, RewriteQuery])
+def test_strict_schema_is_compliant_for_step_models(model):
+    strict = to_openai_strict_schema(model)
+    assert_strict_compliant(strict)
+    objects = _all_object_nodes(strict)
+    assert objects, "expected at least the root object node"
+    for obj in objects:
+        assert obj.get("additionalProperties") is False
+        assert set(obj.get("required", [])) == set(obj.get("properties", {}).keys())
+
+
+def test_context_grade_field_set_and_reuses_enums():
+    assert set(ContextGrade.model_fields) == {"scope", "confidence", "needs_more_context"}
+    assert all(field.is_required() for field in ContextGrade.model_fields.values())
+    # The grade step reuses the shared enums rather than redefining them.
+    assert ContextGrade.model_fields["scope"].annotation is AnswerScope
+    assert ContextGrade.model_fields["confidence"].annotation is ConfidenceLevel
+    assert ContextGrade.model_fields["needs_more_context"].annotation is bool
+
+
+def test_rewrite_query_field_set():
+    assert set(RewriteQuery.model_fields) == {"query"}
+    assert all(field.is_required() for field in RewriteQuery.model_fields.values())
+    assert RewriteQuery.model_fields["query"].annotation is str
+
+
+def test_step_model_schema_hashes_are_deterministic_and_distinct():
+    models = [AnswerV1, ContextGrade, RewriteQuery]
+    # Deterministic per model.
+    for model in models:
+        assert schema_sha256(model) == schema_sha256(model)
+    # Mutually distinct across the three models.
+    hashes = {schema_sha256(model) for model in models}
+    assert len(hashes) == len(models)
+
+
+def test_context_grade_instantiates_and_validates():
+    grade = ContextGrade(scope="partial", confidence="medium", needs_more_context=True)
+    assert grade.scope is AnswerScope.PARTIAL
+    assert grade.confidence is ConfidenceLevel.MEDIUM
+    assert grade.needs_more_context is True
+
+    with pytest.raises(ValidationError):
+        ContextGrade(scope="kinda", confidence="medium", needs_more_context=False)  # bad enum
+    with pytest.raises(ValidationError):
+        ContextGrade(scope="full", confidence="high", needs_more_context=False, extra="x")
+
+
+def test_rewrite_query_instantiates_and_validates():
+    assert RewriteQuery(query="who founded Foo?").query == "who founded Foo?"
+    with pytest.raises(ValidationError):
+        RewriteQuery(query="x", extra="nope")  # extra="forbid"
+
+
+def test_response_schema_for_node_maps_each_step():
+    assert response_schema_for_node("grade", SchemaVariant.ANSWER_V1) is ContextGrade
+    assert response_schema_for_node("rewrite", SchemaVariant.ANSWER_V1) is RewriteQuery
+    assert response_schema_for_node("synthesize", SchemaVariant.ANSWER_V1) is AnswerV1
+
+
+def test_response_schema_for_node_rejects_unknown_node():
+    with pytest.raises(ValueError, match="Unknown agent node"):
+        response_schema_for_node("plan", SchemaVariant.ANSWER_V1)  # type: ignore[arg-type]
