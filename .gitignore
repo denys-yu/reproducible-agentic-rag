@@ -1,0 +1,17 @@
+# Secrets
+.env
+
+# Runtime artifacts (git-ignored except small fixtures)
+data/
+chroma/
+runs/
+.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
