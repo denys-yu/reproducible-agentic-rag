@@ -89,6 +89,14 @@ class Config(BaseSettings):
     chunk_size: int = 512
     chunk_overlap: int = 64
 
+    # ---- Caching (exact-match SHA-256 only; never semantic) ----
+    # Embedding cache ON: identical text -> identical vector across runs, avoids re-embedding.
+    embedding_cache_enabled: bool = True
+    # LLM-response cache OFF by default: headline runs measure inter-run agreement of k INDEPENDENT
+    # calls of the same prompt; a warm cache would replay run 1 and force a trivial 100% agreement.
+    # Enable only for the replay / cache-warm ablation.
+    llm_cache_enabled: bool = False
+
     # ---- BERTScore (CPU only, pinned checkpoint) ----
     bert_score_model: str = "microsoft/deberta-xlarge-mnli"
     bert_score_device: str = "cpu"
