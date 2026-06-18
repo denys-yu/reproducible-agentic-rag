@@ -33,6 +33,62 @@ _FREE_ENUM_FIELDS: dict[str, type[enum.Enum]] = {
     "confidence": ConfidenceLevel,
 }
 
+# Free-arm responses echo the prompt's field names as "<field> <delim> <value>" lines. The model
+# observed using em-dashes, so accept ":", "-", "—" (em) and "–" (en) as delimiters. Field labels
+# match the schema field names case-insensitively (underscores or spaces).
+_DELIMITERS = r"[:—–-]"  # contains literal em-dash (U+2014) and en-dash (U+2013)
+_FIELD_LABEL_PATTERNS: dict[str, str] = {
+    "answer": r"answer",
+    "confidence": r"confidence",
+    "scope": r"scope",
+    "needs_more_context": r"needs[\s_]*more[\s_]*context",
+    "supporting_doc_ids": r"supporting[\s_]*doc[\s_]*ids",
+    "query": r"(?:rewritten\s+)?query",
+}
+_LABEL_RE = re.compile(
+    r"(?:"
+    + "|".join(rf"(?P<{field}>\b{pattern}\b)" for field, pattern in _FIELD_LABEL_PATTERNS.items())
+    + r")"
+    + rf"\s*{_DELIMITERS}\s*",
+    re.IGNORECASE,
+)
+
+# Pre-registered enum synonym maps (explicit; we never interpret beyond these). Matched as whole
+# words/phrases against the labelled value, longest key first so e.g. "not confident" beats
+# "confident". Anything unmatched stays None.
+_SCOPE_MAP: dict[str, AnswerScope] = {
+    "full": AnswerScope.FULL,
+    "fully": AnswerScope.FULL,
+    "completely": AnswerScope.FULL,
+    "partial": AnswerScope.PARTIAL,
+    "partially": AnswerScope.PARTIAL,
+    "partly": AnswerScope.PARTIAL,
+    "none": AnswerScope.NONE,
+    "not at all": AnswerScope.NONE,
+    "no": AnswerScope.NONE,
+    "doesn't cover": AnswerScope.NONE,
+    "does not cover": AnswerScope.NONE,
+}
+_CONFIDENCE_MAP: dict[str, ConfidenceLevel] = {
+    "high": ConfidenceLevel.HIGH,
+    "very confident": ConfidenceLevel.HIGH,
+    "certain": ConfidenceLevel.HIGH,
+    "confident": ConfidenceLevel.HIGH,
+    "medium": ConfidenceLevel.MEDIUM,
+    "moderate": ConfidenceLevel.MEDIUM,
+    "somewhat": ConfidenceLevel.MEDIUM,
+    "low": ConfidenceLevel.LOW,
+    "unsure": ConfidenceLevel.LOW,
+    "uncertain": ConfidenceLevel.LOW,
+    "not confident": ConfidenceLevel.LOW,
+}
+_NEEDS_MORE_MAP: dict[str, bool] = {
+    "yes": True,
+    "true": True,
+    "no": False,
+    "false": False,
+}
+
 
 # --- model construction -----------------------------------------------------------------------
 
@@ -55,33 +111,31 @@ def make_llm(config: Config) -> Any:
 # --- deterministic free-form parsing ----------------------------------------------------------
 
 
-def _find_enum(text: str, enum_cls: type[enum.Enum], label: str) -> enum.Enum | None:
-    """Find an enum member by its exact word: prefer a `label: member` form, else an unambiguous one."""
-    members = [member.value for member in enum_cls]
-    alternation = "|".join(re.escape(m) for m in members)
+def _labelled_fields(text: str) -> dict[str, str]:
+    """Split text into `field -> value` segments, each value running up to the next label.
 
-    labelled = re.search(rf"{label}\s*[:=\-]?\s*\b({alternation})\b", text, re.IGNORECASE)
-    if labelled:
-        return enum_cls(labelled.group(1).lower())
+    A field's value is the text between its delimiter and the start of the next recognized label
+    (or end of text). The first occurrence of each field wins.
+    """
+    matches = list(_LABEL_RE.finditer(text))
+    fields: dict[str, str] = {}
+    for i, match in enumerate(matches):
+        field = match.lastgroup  # the matched named label group
+        value_end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        if field is not None:
+            fields.setdefault(field, text[match.end() : value_end].strip())
+    return fields
 
-    present = {m for m in members if re.search(rf"\b{re.escape(m)}\b", text, re.IGNORECASE)}
-    if len(present) == 1:
-        return enum_cls(present.pop())
-    return None  # absent or ambiguous -> faithfully unknown
 
-
-def _find_bool(text: str, label: str) -> bool | None:
-    """Find a labelled yes/no (true/false) boolean, or None when not present."""
-    match = re.search(rf"{label}\s*[:=\-]?\s*\b(yes|true|no|false)\b", text, re.IGNORECASE)
-    if match:
-        return match.group(1).lower() in ("yes", "true")
+def _match_synonym(value: str | None, mapping: dict[str, Any]) -> Any | None:
+    """Map a labelled value to its pre-registered enum/bool, longest key first; else None."""
+    if not value:
+        return None
+    lowered = value.lower()
+    for key in sorted(mapping, key=len, reverse=True):
+        if re.search(rf"\b{re.escape(key)}\b", lowered):
+            return mapping[key]
     return None
-
-
-def _extract_labelled_value(text: str, label: str) -> str | None:
-    """Return the remainder of the first `label: value` line, stripped, or None."""
-    match = re.search(rf"{label}\s*[:=\-]\s*(.+)", text, re.IGNORECASE)
-    return match.group(1).strip() if match else None
 
 
 def _extract_doc_ids(text: str) -> list[str]:
@@ -99,21 +153,22 @@ def parse_free_response(node: NodeName, text: str) -> dict[str, Any]:
     confidently present (never a guessed default). No randomness, no model calls.
     """
     text = text or ""
+    fields = _labelled_fields(text)
     if node == "grade":
         return {
-            "scope": _find_enum(text, AnswerScope, "scope"),
-            "confidence": _find_enum(text, ConfidenceLevel, "confidence"),
-            "needs_more_context": _find_bool(text, r"needs[\s_]*more[\s_]*context"),
+            "scope": _match_synonym(fields.get("scope"), _SCOPE_MAP),
+            "confidence": _match_synonym(fields.get("confidence"), _CONFIDENCE_MAP),
+            "needs_more_context": _match_synonym(fields.get("needs_more_context"), _NEEDS_MORE_MAP),
         }
     if node == "rewrite":
-        labelled = _extract_labelled_value(text, r"(?:rewritten\s+)?query")
-        return {"query": labelled if labelled else text.strip()}
+        query = fields.get("query")
+        return {"query": query if query else text.strip()}
     if node == "synthesize":
-        labelled_answer = _extract_labelled_value(text, "answer")
+        answer = fields.get("answer")  # isolated to the "answer" segment, not the whole blob
         return {
-            "answer": labelled_answer if labelled_answer is not None else text.strip(),
-            "confidence": _find_enum(text, ConfidenceLevel, "confidence"),
-            "scope": _find_enum(text, AnswerScope, "scope"),
+            "answer": answer if answer else text.strip(),
+            "confidence": _match_synonym(fields.get("confidence"), _CONFIDENCE_MAP),
+            "scope": _match_synonym(fields.get("scope"), _SCOPE_MAP),
             "supporting_doc_ids": _extract_doc_ids(text),
         }
     raise ValueError(f"Unknown agent node {node!r}")

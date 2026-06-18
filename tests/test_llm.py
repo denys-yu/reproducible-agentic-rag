@@ -7,6 +7,7 @@ a temp provenance logger and the default (cold) LLM cache.
 from __future__ import annotations
 
 import json
+import warnings
 
 from src.config import Config, SchemaVariant
 from src.llm import CallResult, call_llm, make_llm, parse_free_response
@@ -203,3 +204,116 @@ def test_call_llm_free_parses_text_and_logs_null_schema(tmp_path):
     assert rec["system_fingerprint"] == "fp_test"
     assert rec["tokens_in"] == 11 and rec["tokens_out"] == 7
     assert rec["cache_hit"] is False
+
+
+# --- hardened free-form parsing ---------------------------------------------------------------
+
+
+def test_parse_free_handles_em_dash_en_dash_hyphen_and_colon():
+    for delim in ("—", "–", "-", ":"):
+        text = f"answer {delim} Maine\nconfidence {delim} high\nscope {delim} full"
+        parsed = parse_free_response("synthesize", text)
+        assert parsed["answer"] == "Maine"
+        assert parsed["confidence"] is ConfidenceLevel.HIGH
+        assert parsed["scope"] is AnswerScope.FULL
+
+
+def test_parse_free_scope_synonyms():
+    def scope(value):
+        return parse_free_response("grade", f"scope — {value}")["scope"]
+
+    assert scope("fully covers the question") is AnswerScope.FULL
+    assert scope("completely") is AnswerScope.FULL
+    assert scope("partially") is AnswerScope.PARTIAL
+    assert scope("partly") is AnswerScope.PARTIAL
+    assert scope("not at all") is AnswerScope.NONE
+    assert scope("does not cover") is AnswerScope.NONE
+    assert scope("unrelated prose") is None
+
+
+def test_parse_free_confidence_synonyms():
+    def conf(value):
+        return parse_free_response("grade", f"confidence — {value}")["confidence"]
+
+    assert conf("very confident") is ConfidenceLevel.HIGH
+    assert conf("certain") is ConfidenceLevel.HIGH
+    assert conf("moderate") is ConfidenceLevel.MEDIUM
+    assert conf("somewhat") is ConfidenceLevel.MEDIUM
+    assert conf("uncertain") is ConfidenceLevel.LOW
+    assert conf("not confident") is ConfidenceLevel.LOW  # longest-match beats "confident"
+    assert conf("no idea") is None
+
+
+def test_parse_free_needs_more_context_yes_no():
+    def needs(value):
+        return parse_free_response("grade", f"needs_more_context — {value}")["needs_more_context"]
+
+    assert needs("yes") is True
+    assert needs("true") is True
+    assert needs("no") is False
+    assert needs("false") is False
+    assert needs("maybe") is None
+
+
+def test_parse_free_answer_is_isolated_not_whole_blob():
+    text = "answer — The Maine Legislature\nconfidence — high\nscope — full"
+    parsed = parse_free_response("synthesize", text)
+    assert parsed["answer"] == "The Maine Legislature"  # not the whole blob
+    assert parsed["scope"] is AnswerScope.FULL
+
+
+def test_parse_free_answer_falls_back_when_unlabelled():
+    parsed = parse_free_response("synthesize", "The capital is Paris.")
+    assert parsed["answer"] == "The capital is Paris."
+    assert parsed["confidence"] is None
+    assert parsed["scope"] is None
+
+
+# --- logged parsed is plain JSON strings, no serialization warning -----------------------------
+
+
+def _enum_call(config, logger):
+    parsed_model = AnswerV1(
+        answer="Paris", confidence="high", scope="full", supporting_doc_ids=[_DOC_ID]
+    )
+    raw = FakeMessage(content=json.dumps(parsed_model.model_dump(mode="json")))
+    return call_llm(
+        node="synthesize",
+        arm="enum",
+        variant=SchemaVariant.ANSWER_V1,
+        messages=[{"role": "user", "content": "capital of France?"}],
+        config=config,
+        logger=logger,
+        run_id="run-json",
+        question_id="q1",
+        retrieved_ids=[_DOC_ID],
+        retrieved_scores=[0.9],
+        model=FakeChatModel(raw, parsed=parsed_model),
+    )
+
+
+def test_logged_parsed_contains_string_enum_values(tmp_path):
+    config = _config(tmp_path)
+    logger = ProvenanceLogger.for_run("run-json", config)
+    _enum_call(config, logger)
+    logger.close()
+
+    parsed = _read_records(logger)[0]["parsed"]
+    assert parsed["confidence"] == "high" and isinstance(parsed["confidence"], str)
+    assert parsed["scope"] == "full" and isinstance(parsed["scope"], str)
+    assert parsed["answer"] == "Paris"
+    assert parsed["supporting_doc_ids"] == [_DOC_ID]
+
+
+def test_logging_emits_no_pydantic_serialization_warning(tmp_path):
+    config = _config(tmp_path)
+    logger = ProvenanceLogger.for_run("run-json", config)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _enum_call(config, logger)
+        logger.close()
+
+    serialization_warnings = [
+        w for w in caught if "serializ" in str(w.message).lower() or "pydantic" in str(w.message).lower()
+    ]
+    assert not serialization_warnings, [str(w.message) for w in serialization_warnings]
