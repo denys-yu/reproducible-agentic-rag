@@ -12,9 +12,12 @@ text, using `None` to faithfully signal "not confidently present" rather than gu
 
 from __future__ import annotations
 
+import contextlib
 import enum
 import re
 import time
+import warnings
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,11 +30,22 @@ Messages = list[dict[str, Any]]
 
 # 64-char hex tokens are SHA-256 doc_ids (see data.compute_doc_id).
 _DOC_ID_RE = re.compile(r"\b[0-9a-f]{64}\b", re.IGNORECASE)
-# Free-arm enum fields that must be coerced back from strings.
-_FREE_ENUM_FIELDS: dict[str, type[enum.Enum]] = {
-    "scope": AnswerScope,
-    "confidence": ConfidenceLevel,
-}
+
+
+@contextlib.contextmanager
+def _suppress_response_serializer_warning() -> Iterator[None]:
+    """Silence langchain_openai's benign response-serialization warning during a structured call.
+
+    For strict structured output, the OpenAI SDK populates `response.choices[0].message.parsed`
+    with the raw Pydantic model. langchain_openai then calls `response.model_dump()`
+    (`_create_chat_result`), and Pydantic warns "Expected `none` ... got ContextGrade" because the
+    SDK's `parsed` field is `Optional[...]`. It is emitted synchronously inside our
+    `invoke` (in a RunnableParallel worker thread) and is harmless — the parsed value we use is
+    unaffected. We scope the filter to our own call so no global warning state leaks.
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Pydantic serializer warnings", category=UserWarning)
+        yield
 
 # Free-arm responses echo the prompt's field names as "<field> <delim> <value>" lines. The model
 # observed using em-dashes, so accept ":", "-", "—" (em) and "–" (en) as delimiters. Field labels
@@ -179,10 +193,12 @@ def parse_free_response(node: NodeName, text: str) -> dict[str, Any]:
 
 @dataclass(frozen=True)
 class CallResult:
-    """Arm-agnostic call result: node-relevant parsed fields plus raw text and cache flag.
+    """Arm-agnostic call result.
 
-    `parsed` holds enum-bearing values (AnswerScope/ConfidenceLevel) or None where free-form
-    parsing was unsure; the convenience properties expose the per-node fields.
+    `parsed` is a PLAIN JSON dict (string enum values, bools, lists, None) — it never holds a raw
+    Pydantic structured model, so nothing typed lingers to be re-serialized when a CallResult sits
+    in the LangGraph state. The convenience properties coerce string enum values back to typed
+    members on read for the graph.
     """
 
     node: NodeName
@@ -193,11 +209,13 @@ class CallResult:
 
     @property
     def scope(self) -> AnswerScope | None:
-        return self.parsed.get("scope")
+        value = self.parsed.get("scope")
+        return AnswerScope(value) if value is not None else None
 
     @property
     def confidence(self) -> ConfidenceLevel | None:
-        return self.parsed.get("confidence")
+        value = self.parsed.get("confidence")
+        return ConfidenceLevel(value) if value is not None else None
 
     @property
     def needs_more_context(self) -> bool | None:
@@ -268,20 +286,6 @@ def _model_to_json(model: Any) -> dict[str, Any]:
     return data
 
 
-def _coerce_parsed(node: NodeName, arm: str, parsed_json: dict[str, Any], variant: SchemaVariant):
-    """Rebuild the enum-bearing parsed dict from its JSON form (shared by fresh + cached paths)."""
-    if arm == Arm.ENUM.value:
-        schema_cls = response_schema_for_node(node, variant)
-        model = schema_cls.model_validate(parsed_json)
-        return {name: getattr(model, name) for name in schema_cls.model_fields}
-    coerced = dict(parsed_json)
-    for field, enum_cls in _FREE_ENUM_FIELDS.items():
-        value = coerced.get(field)
-        if isinstance(value, str):
-            coerced[field] = enum_cls(value)
-    return coerced
-
-
 # --- the core wrapper -------------------------------------------------------------------------
 
 
@@ -322,7 +326,8 @@ def call_llm(
         start = time.perf_counter()
         if schema is not None:
             structured = model.with_structured_output(schema, strict=True, include_raw=True)
-            result = structured.invoke(messages)
+            with _suppress_response_serializer_warning():
+                result = structured.invoke(messages)
             raw_message = result["raw"]
             parsed_model = result["parsed"]
             if parsed_model is None:  # fail loud on malformed strict output
@@ -330,7 +335,7 @@ def call_llm(
                     f"strict structured output failed for node {node!r}: {result.get('parsing_error')}"
                 )
             raw_text = _message_text(raw_message)
-            parsed_json = _model_to_json(parsed_model)  # plain strings; avoids the serializer warning
+            parsed_json = _model_to_json(parsed_model)  # plain string scalars for logging
         else:
             raw_message = model.invoke(messages)
             raw_text = _message_text(raw_message)
@@ -375,5 +380,5 @@ def call_llm(
         arm=arm_value,
         raw_text=raw_text,
         cache_hit=cache_hit,
-        parsed=_coerce_parsed(node, arm_value, parsed_json, variant),
+        parsed=parsed_json,  # plain JSON dict; accessors coerce enums on read
     )

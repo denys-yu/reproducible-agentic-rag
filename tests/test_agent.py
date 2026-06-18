@@ -66,7 +66,7 @@ class _FakeStructured:
     def __init__(self, model: FakeChatModel) -> None:
         self._model = model
 
-    def invoke(self, messages):
+    def invoke(self, messages, config=None):
         node = _node_of(messages)
         return {"raw": FakeMessage(self._model.free_text[node]), "parsed": self._model.parsed[node], "parsing_error": None}
 
@@ -93,7 +93,7 @@ class FakeChatModel:
             ),
         }
 
-    def invoke(self, messages):  # free arm
+    def invoke(self, messages, config=None):  # free arm
         return FakeMessage(self.free_text[_node_of(messages)])
 
     def with_structured_output(self, schema, *, strict, include_raw):  # enum arm

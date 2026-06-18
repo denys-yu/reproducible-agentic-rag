@@ -31,11 +31,13 @@ class FakeMessage:
 
 
 class _FakeStructured:
-    def __init__(self, raw: FakeMessage, parsed) -> None:
+    def __init__(self, raw: FakeMessage, parsed, owner: FakeChatModel) -> None:
         self._raw = raw
         self._parsed = parsed
+        self._owner = owner
 
-    def invoke(self, messages):
+    def invoke(self, messages, config=None):
+        self._owner.invoke_configs.append(config)
         return {"raw": self._raw, "parsed": self._parsed, "parsing_error": None}
 
 
@@ -46,14 +48,16 @@ class FakeChatModel:
         self._raw = raw
         self._parsed = parsed
         self.structured_calls: list[dict] = []
+        self.invoke_configs: list = []  # configs passed to invoke (to assert callbacks are detached)
 
-    def invoke(self, messages):
+    def invoke(self, messages, config=None):
+        self.invoke_configs.append(config)
         return self._raw
 
     def with_structured_output(self, schema, *, strict, include_raw):
         assert strict is True and include_raw is True
         self.structured_calls.append({"schema": schema, "strict": strict, "include_raw": include_raw})
-        return _FakeStructured(self._raw, self._parsed)
+        return _FakeStructured(self._raw, self._parsed, self)
 
 
 def _config(tmp_path, **overrides) -> Config:
@@ -361,3 +365,90 @@ def test_no_serialization_warning_on_real_langchain_unvalidated_model(tmp_path):
     parsed = _read_records(logger)[0]["parsed"]
     assert parsed["confidence"] == "high" and isinstance(parsed["confidence"], str)
     assert parsed["scope"] == "full" and isinstance(parsed["scope"], str)
+
+
+# --- the real fix: suppress langchain_openai's response-serialization warning -----------------
+# The runtime "Expected `none` ... input_type=ContextGrade" warning is emitted by langchain_openai
+# inside `_create_chat_result` (response.model_dump() over the OpenAI SDK response whose `parsed`
+# field is Optional), synchronously during our structured `invoke`, in a RunnableParallel worker
+# thread. We reproduce that mechanism here (a warning emitted from a thread during invoke) and
+# assert call_llm's scoped suppression swallows it. The exact langchain-internal warning is also
+# verified end-to-end by the enum-arm CLI smoke.
+
+_SERIALIZER_WARNING = (
+    "Pydantic serializer warnings:\n  PydanticSerializationUnexpectedValue("
+    "Expected `none` - serialized value may not be as expected "
+    "[field_name='parsed', input_value=ContextGrade(...), input_type=ContextGrade])"
+)
+
+
+class _ThreadWarningStructured:
+    def __init__(self, raw, parsed):
+        self._raw = raw
+        self._parsed = parsed
+
+    def invoke(self, messages, config=None):
+        # Emit the warning from a worker thread, joined before returning — exactly like the real
+        # RunnableParallel serialization path.
+        import threading
+
+        t = threading.Thread(target=lambda: warnings.warn(_SERIALIZER_WARNING, UserWarning))
+        t.start()
+        t.join()
+        return {"raw": self._raw, "parsed": self._parsed, "parsing_error": None}
+
+
+class ThreadWarningModel:
+    def __init__(self, raw, parsed):
+        self._raw = raw
+        self._parsed = parsed
+
+    def with_structured_output(self, schema, *, strict, include_raw):
+        return _ThreadWarningStructured(self._raw, self._parsed)
+
+
+def test_threaded_serializer_warning_reproduces_then_is_suppressed(tmp_path):
+    config = _config(tmp_path)
+    parsed_model = AnswerV1(answer="x", confidence="high", scope="full", supporting_doc_ids=[])
+    fake = ThreadWarningModel(FakeMessage(content="{}"), parsed_model)
+
+    # Sanity: the structured invoke DOES emit the serializer warning when not suppressed.
+    with warnings.catch_warnings(record=True) as raw_warns:
+        warnings.simplefilter("always")
+        fake.with_structured_output(AnswerV1, strict=True, include_raw=True).invoke([])
+    assert _serialization_warnings(raw_warns), "expected the threaded serializer warning to fire"
+
+    # call_llm must swallow it (scoped suppression), with nothing leaking to the caller.
+    logger = ProvenanceLogger.for_run("run-suppress", config)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        call_llm(
+            node="synthesize", arm="enum", variant=SchemaVariant.ANSWER_V1,
+            messages=[{"role": "user", "content": "q"}], config=config, logger=logger,
+            run_id="run-suppress", question_id="q1", retrieved_ids=[], retrieved_scores=[], model=fake,
+        )
+        logger.close()
+    assert not _serialization_warnings(caught), [str(w.message) for w in caught]
+
+
+def test_callresult_parsed_is_plain_dict_and_accessors_coerce(tmp_path):
+    config = _config(tmp_path)
+    parsed_model = AnswerV1(
+        answer="Paris", confidence="high", scope="full", supporting_doc_ids=[_DOC_ID]
+    )
+    fake = FakeChatModel(FakeMessage(content="{}"), parsed=parsed_model)
+    logger = ProvenanceLogger.for_run("run-cr", config)
+    result = call_llm(
+        node="synthesize", arm="enum", variant=SchemaVariant.ANSWER_V1,
+        messages=[{"role": "user", "content": "q"}], config=config, logger=logger,
+        run_id="run-cr", question_id="q1", retrieved_ids=[_DOC_ID], retrieved_scores=[0.9], model=fake,
+    )
+    logger.close()
+
+    # CallResult carries ONLY plain JSON scalars/lists — never the raw model or enum objects.
+    assert result.parsed == {
+        "answer": "Paris", "confidence": "high", "scope": "full", "supporting_doc_ids": [_DOC_ID]
+    }
+    # ...but the accessors coerce string enum values back to typed members for the graph.
+    assert result.confidence is ConfidenceLevel.HIGH
+    assert result.scope is AnswerScope.FULL
