@@ -189,12 +189,18 @@ def run_manifest_path(run_id: str, config: Config) -> Path:
 
 
 class ProvenanceLogger:
-    """Append-only JSONL writer: one validated record per line, flushed after every write."""
+    """JSONL writer: starts a FRESH manifest per run, one validated record per line, flushed.
+
+    Constructing a logger for a run_id truncates any existing manifest for that run_id, so
+    re-running a run_id yields a clean manifest and never accumulates stale records across runs.
+    Within a run, records are appended sequentially and flushed after each write (crash-safe).
+    """
 
     def __init__(self, path: Path) -> None:
         self._path = Path(path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._handle = self._path.open("a", encoding="utf-8")
+        # "w" truncates any prior manifest at construction; subsequent writes append in-run.
+        self._handle = self._path.open("w", encoding="utf-8")
 
     @classmethod
     def for_run(cls, run_id: str, config: Config) -> ProvenanceLogger:

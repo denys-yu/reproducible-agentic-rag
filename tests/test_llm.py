@@ -317,3 +317,47 @@ def test_logging_emits_no_pydantic_serialization_warning(tmp_path):
         w for w in caught if "serializ" in str(w.message).lower() or "pydantic" in str(w.message).lower()
     ]
     assert not serialization_warnings, [str(w.message) for w in serialization_warnings]
+
+
+def _serialization_warnings(caught):
+    return [w for w in caught if "serializ" in str(w.message).lower() or "pydantic" in str(w.message).lower()]
+
+
+def test_no_serialization_warning_on_real_langchain_unvalidated_model(tmp_path):
+    # LangChain's strict parser constructs the model WITHOUT coercing enums, leaving raw strings
+    # in enum fields. This reproduces the real runtime path the smoke exercised.
+    config = _config(tmp_path)
+    parsed_model = AnswerV1.model_construct(
+        answer="Paris", confidence="high", scope="full", supporting_doc_ids=[_DOC_ID]
+    )
+
+    # Sanity: the naive model_dump path DOES warn (the trap we must avoid).
+    with warnings.catch_warnings(record=True) as naive:
+        warnings.simplefilter("always")
+        parsed_model.model_dump(mode="json")
+    assert _serialization_warnings(naive), "expected the naive model_dump path to warn"
+
+    # call_llm + the logger's json.dumps must NOT warn, and must log clean string scalars.
+    raw = FakeMessage(content="{}")
+    logger = ProvenanceLogger.for_run("run-unval", config)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        call_llm(
+            node="synthesize",
+            arm="enum",
+            variant=SchemaVariant.ANSWER_V1,
+            messages=[{"role": "user", "content": "capital of France?"}],
+            config=config,
+            logger=logger,
+            run_id="run-unval",
+            question_id="q1",
+            retrieved_ids=[_DOC_ID],
+            retrieved_scores=[0.9],
+            model=FakeChatModel(raw, parsed=parsed_model),
+        )
+        logger.close()
+
+    assert not _serialization_warnings(caught), [str(w.message) for w in caught]
+    parsed = _read_records(logger)[0]["parsed"]
+    assert parsed["confidence"] == "high" and isinstance(parsed["confidence"], str)
+    assert parsed["scope"] == "full" and isinstance(parsed["scope"], str)

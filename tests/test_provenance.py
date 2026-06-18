@@ -149,3 +149,24 @@ def test_logger_rejects_partial_record_without_writing(tmp_path):
         assert logger.path.read_text(encoding="utf-8") == ""
     finally:
         logger.close()
+
+
+def test_logger_starts_fresh_manifest_for_run_id(tmp_path):
+    config = Config(runs_dir=tmp_path)
+
+    # A prior run leaves stale records under this run_id.
+    first = ProvenanceLogger.for_run("run-redo", config)
+    first.log(_record(config, question_id="old-1"))
+    first.log(_record(config, question_id="old-2"))
+    first.close()
+    assert len(run_manifest_path("run-redo", config).read_text(encoding="utf-8").splitlines()) == 2
+
+    # Re-running the same run_id must truncate and yield exactly the new N records.
+    second = ProvenanceLogger.for_run("run-redo", config)
+    second.log(_record(config, question_id="new-1"))
+    second.log(_record(config, question_id="new-2"))
+    second.close()
+
+    lines = run_manifest_path("run-redo", config).read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2  # not appended to the old 2
+    assert [json.loads(line)["question_id"] for line in lines] == ["new-1", "new-2"]

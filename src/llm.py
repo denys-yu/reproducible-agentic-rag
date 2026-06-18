@@ -253,6 +253,21 @@ def _jsonify_free(parsed: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _model_to_json(model: Any) -> dict[str, Any]:
+    """Convert a structured-output model to a plain string-scalar dict WITHOUT Pydantic serialization.
+
+    LangChain's strict parser constructs the model without coercing enum fields, so they may hold
+    raw strings. Calling `model_dump(mode="json")` on such an instance emits a Pydantic serializer
+    warning. We read each field directly instead (enum -> .value, anything else as-is), yielding a
+    clean JSON dict and never triggering the serializer.
+    """
+    data: dict[str, Any] = {}
+    for name in type(model).model_fields:
+        value = getattr(model, name)
+        data[name] = value.value if isinstance(value, enum.Enum) else value
+    return data
+
+
 def _coerce_parsed(node: NodeName, arm: str, parsed_json: dict[str, Any], variant: SchemaVariant):
     """Rebuild the enum-bearing parsed dict from its JSON form (shared by fresh + cached paths)."""
     if arm == Arm.ENUM.value:
@@ -315,7 +330,7 @@ def call_llm(
                     f"strict structured output failed for node {node!r}: {result.get('parsing_error')}"
                 )
             raw_text = _message_text(raw_message)
-            parsed_json = parsed_model.model_dump(mode="json")
+            parsed_json = _model_to_json(parsed_model)  # plain strings; avoids the serializer warning
         else:
             raw_message = model.invoke(messages)
             raw_text = _message_text(raw_message)
