@@ -15,6 +15,7 @@ import json
 import math
 import re
 import string
+import sys
 import warnings
 from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
@@ -326,8 +327,14 @@ def rewrite_rate(ds: Dataset, arm: str) -> float:
 
 
 def bertscore_f1(ds: Dataset, arm: str, config: Config) -> float:
-    """Mean pairwise BERTScore-F1 between run answers (per question, then over questions)."""
-    from bert_score import score as bert_score
+    """Mean pairwise BERTScore-F1 between run answers (per question, then over questions).
+
+    Uses a `BERTScorer` so we can clamp the tokenizer's `model_max_length`: the
+    deberta-xlarge-mnli tokenizer ships a sentinel-huge value that overflows the Rust tokenizer's
+    truncation (`OverflowError: int too big to convert`). HotpotQA answers are short, so a 512
+    bound never truncates meaningfully.
+    """
+    from bert_score import BERTScorer
 
     cands, refs, owner = [], [], []
     for qi, qid in enumerate(ds.complete_qids):
@@ -338,14 +345,17 @@ def bertscore_f1(ds: Dataset, arm: str, config: Config) -> float:
             owner.append(qi)
     if not cands:
         return float("nan")
-    _, _, f1 = bert_score(
-        cands,
-        refs,
+
+    scorer = BERTScorer(
         model_type=config.bert_score_model,
         device=config.bert_score_device,
         rescale_with_baseline=False,
-        verbose=False,
     )
+    tokenizer = getattr(scorer, "_tokenizer", None)
+    if tokenizer is not None and (tokenizer.model_max_length is None or tokenizer.model_max_length > 4096):
+        tokenizer.model_max_length = 512  # avoid the sentinel-overflow in enable_truncation
+
+    _, _, f1 = scorer.score(cands, refs, verbose=False)
     per_q: dict[int, list[float]] = defaultdict(list)
     for owner_qi, score in zip(owner, f1.tolist(), strict=True):
         per_q[owner_qi].append(score)
@@ -467,6 +477,15 @@ def _field_tokens_fn(ds: Dataset, node: str, key: str) -> Callable[[str, str], l
     return lambda arm, qid: ds.field_tokens(arm, node, key, qid)
 
 
+def _safe_optional(name: str, fn: Callable[[], float]) -> float | None:
+    """Run an optional/fragile metric; on ANY failure warn and return None (never fatal)."""
+    try:
+        return fn()
+    except Exception as exc:  # optional metric must never take down the headline report
+        print(f"WARNING: {name} skipped: {exc}", file=sys.stderr)
+        return None
+
+
 def compute_metrics(
     config: Config,
     *,
@@ -474,7 +493,7 @@ def compute_metrics(
     questions: Sequence[dict[str, Any]] | None = None,
     cosine: bool = False,
     strata: bool = False,
-    bertscore: bool = True,
+    bertscore: bool = False,
 ) -> dict[str, Any]:
     """Compute all metrics over the manifests and return a machine-readable results dict."""
     runs_dir = config.runs_dir if runs_dir is None else Path(runs_dir)
@@ -503,8 +522,13 @@ def compute_metrics(
     for arm in ds.arms:
         fields = {_field_label(n, k): _field_metrics(ds, arm, n, k) for n, k in CATEGORICAL_FIELDS}
         answer = _answer_metrics(ds, arm)
-        answer["bertscore_f1"] = bertscore_f1(ds, arm, config) if bertscore else None
-        answer["cosine"] = _cosine_agreement(ds, arm, config) if cosine else None
+        # _safe_optional invokes immediately, so capturing the loop var `arm` is correct here.
+        answer["bertscore_f1"] = (
+            _safe_optional("BERTScore", lambda a=arm: bertscore_f1(ds, a, config)) if bertscore else None
+        )
+        answer["cosine"] = (
+            _safe_optional("cosine", lambda a=arm: _cosine_agreement(ds, a, config)) if cosine else None
+        )
         results["per_arm"][arm] = {
             "fields": fields,
             "answer": answer,
@@ -626,13 +650,22 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--runs-dir", type=Path, default=None, help="manifests dir (default: config)")
     parser.add_argument("--out", type=Path, default=Path("results.json"))
+    parser.add_argument(
+        "--bertscore",
+        action="store_true",
+        help="also compute BERTScore-F1 (downloads deberta-xlarge-mnli; OFF by default)",
+    )
     parser.add_argument("--cosine", action="store_true", help="also compute answer cosine (needs API)")
     parser.add_argument("--strata", action="store_true", help="break results down by type/level")
     args = parser.parse_args(argv)
 
     config = Config()
     results = compute_metrics(
-        config, runs_dir=args.runs_dir, cosine=args.cosine, strata=args.strata, bertscore=True
+        config,
+        runs_dir=args.runs_dir,
+        cosine=args.cosine,
+        strata=args.strata,
+        bertscore=args.bertscore,
     )
     print_report(results)
     args.out.write_text(json.dumps(_sanitize(results), indent=2, sort_keys=True), encoding="utf-8")
