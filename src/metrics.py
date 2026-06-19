@@ -74,6 +74,24 @@ def token_f1(prediction: str, gold: str) -> float:
     return 2 * precision * recall / (precision + recall)
 
 
+def contains_gold(prediction: str, gold: str) -> float:
+    """1.0 if the gold's normalized tokens are a CONTIGUOUS sub-sequence of the answer's tokens.
+
+    Token-level (not raw substring), so e.g. gold "yes" does not match inside "yesterday". This
+    disambiguates a verbosity/format artifact (a fuller answer that still contains the gold span)
+    from a real correctness loss.
+    """
+    pred_tokens = normalize_answer(prediction).split()
+    gold_tokens = normalize_answer(gold).split()
+    if not gold_tokens:
+        return 1.0  # empty sequence is trivially contained
+    span = len(gold_tokens)
+    for start in range(len(pred_tokens) - span + 1):
+        if pred_tokens[start : start + span] == gold_tokens:
+            return 1.0
+    return 0.0
+
+
 # --- manifest loading -------------------------------------------------------------------------
 
 
@@ -301,22 +319,37 @@ def _answer_metrics(ds: Dataset, arm: str) -> dict[str, Any]:
 
 
 def _quality(ds: Dataset, arm: str, gold: dict[str, str]) -> dict[str, Any]:
-    em_per_run, f1_per_run = [], []
+    em_per_run, f1_per_run, contain_per_run = [], [], []
     for r_idx in range(ds.k):
-        ems, f1s = [], []
+        ems, f1s, contains = [], [], []
         for qid in ds.complete_qids:
             answer = ds.answers(arm, qid, normalized=False)[r_idx]
             ems.append(exact_match(answer, gold[qid]))
             f1s.append(token_f1(answer, gold[qid]))
+            contains.append(contains_gold(answer, gold[qid]))
         em_per_run.append(float(np.mean(ems)))
         f1_per_run.append(float(np.mean(f1s)))
+        contain_per_run.append(float(np.mean(contains)))
+
+    # Answer-length stats over every (run, question) answer, to quantify verbosity directly.
+    norm_token_lengths, raw_char_lengths = [], []
+    for qid in ds.complete_qids:
+        for answer in ds.answers(arm, qid, normalized=False):
+            norm_token_lengths.append(len(normalize_answer(answer).split()))
+            raw_char_lengths.append(len(answer))
+
     return {
         "em_mean": float(np.mean(em_per_run)),
         "em_std": float(np.std(em_per_run)),
         "f1_mean": float(np.mean(f1_per_run)),
         "f1_std": float(np.std(f1_per_run)),
+        "containment_mean": float(np.mean(contain_per_run)),
+        "containment_std": float(np.std(contain_per_run)),
         "em_per_run": em_per_run,
         "f1_per_run": f1_per_run,
+        "containment_per_run": contain_per_run,
+        "answer_len_tokens_mean": float(np.mean(norm_token_lengths)) if norm_token_lengths else 0.0,
+        "answer_len_chars_mean": float(np.mean(raw_char_lengths)) if raw_char_lengths else 0.0,
     }
 
 
@@ -445,22 +478,36 @@ def _compare_agreement(
 
 
 def _compare_quality(ds: Dataset, gold: dict[str, str], seed: int) -> dict[str, Any]:
-    def per_q_f1(arm: str) -> dict[str, float]:
+    qids = ds.complete_qids
+
+    def per_q(arm: str, metric: Callable[[str, str], float]) -> dict[str, float]:
         return {
-            qid: float(np.mean([token_f1(a, gold[qid]) for a in ds.answers(arm, qid, normalized=False)]))
-            for qid in ds.complete_qids
+            qid: float(np.mean([metric(a, gold[qid]) for a in ds.answers(arm, qid, normalized=False)]))
+            for qid in qids
         }
 
-    enum_f1, free_f1 = per_q_f1("enum"), per_q_f1("free")
-    qids = ds.complete_qids
-    diffs = np.array([enum_f1[q] - free_f1[q] for q in qids])
-    stat, p = _wilcoxon_p(diffs)
-    lo, hi = _bootstrap_ci(qids, lambda s: float(np.mean([enum_f1[q] - free_f1[q] for q in s])), seed)
+    def paired(enum_map: dict[str, float], free_map: dict[str, float]) -> dict[str, Any]:
+        diffs = np.array([enum_map[q] - free_map[q] for q in qids])
+        _, p = _wilcoxon_p(diffs)
+        lo, hi = _bootstrap_ci(qids, lambda s: float(np.mean([enum_map[q] - free_map[q] for q in s])), seed)
+        return {
+            "delta": float(np.mean(list(enum_map.values())) - np.mean(list(free_map.values()))),
+            "wilcoxon_p": p,
+            "ci95": [lo, hi],
+            "cliffs_delta": cliffs_delta(list(enum_map.values()), list(free_map.values())),
+        }
+
+    f1 = paired(per_q("enum", token_f1), per_q("free", token_f1))
+    containment = paired(per_q("enum", contains_gold), per_q("free", contains_gold))
     return {
-        "delta_f1": float(np.mean(list(enum_f1.values())) - np.mean(list(free_f1.values()))),
-        "wilcoxon_p": p,
-        "f1_ci95": [lo, hi],
-        "cliffs_delta": cliffs_delta(list(enum_f1.values()), list(free_f1.values())),
+        "delta_f1": f1["delta"],
+        "wilcoxon_p": f1["wilcoxon_p"],
+        "f1_ci95": f1["ci95"],
+        "cliffs_delta": f1["cliffs_delta"],
+        "delta_containment": containment["delta"],
+        "containment_wilcoxon_p": containment["wilcoxon_p"],
+        "containment_ci95": containment["ci95"],
+        "containment_cliffs_delta": containment["cliffs_delta"],
     }
 
 
@@ -615,7 +662,10 @@ def print_report(results: dict[str, Any]) -> None:
               f"  BERTScore-F1={_fmt(a['bertscore_f1'])}")
         q = data["quality"]
         print(f"  quality vs gold: EM={_fmt(q['em_mean'])}+/-{_fmt(q['em_std'])}  "
-              f"F1={_fmt(q['f1_mean'])}+/-{_fmt(q['f1_std'])}")
+              f"F1={_fmt(q['f1_mean'])}+/-{_fmt(q['f1_std'])}  "
+              f"Contains={_fmt(q['containment_mean'])}+/-{_fmt(q['containment_std'])}")
+        print(f"  answer length: {_fmt(q['answer_len_tokens_mean'])} tokens / "
+              f"{_fmt(q['answer_len_chars_mean'])} chars (mean)")
 
     if results["comparison"]:
         print("\n=== enum vs free (paired by question; delta = enum - free) ===")
@@ -623,6 +673,10 @@ def print_report(results: dict[str, Any]) -> None:
             if label == "quality":
                 print(f"  {'d_F1':<24}{_fmt(c['delta_f1']):>8}  p={_fmt(c['wilcoxon_p'])}  "
                       f"CI95={[_fmt(x) for x in c['f1_ci95']]}  cliffs_d={_fmt(c['cliffs_delta'])}")
+                print(f"  {'d_containment':<24}{_fmt(c['delta_containment']):>8}  "
+                      f"p={_fmt(c['containment_wilcoxon_p'])}  "
+                      f"CI95={[_fmt(x) for x in c['containment_ci95']]}  "
+                      f"cliffs_d={_fmt(c['containment_cliffs_delta'])}")
                 continue
             line = (f"  {label:<24}{_fmt(c['delta_mean_agreement']):>8}  p={_fmt(c['wilcoxon_p'])}  "
                     f"CI95={[_fmt(x) for x in c['agreement_ci95']]}  cliffs_d={_fmt(c['cliffs_delta'])}")

@@ -13,6 +13,7 @@ from src.config import Config
 from src.metrics import (
     cliffs_delta,
     compute_metrics,
+    contains_gold,
     exact_match,
     normalize_answer,
     token_f1,
@@ -98,6 +99,16 @@ def test_cliffs_delta_dominance():
     assert cliffs_delta([0, 0], [1, 1]) == -1.0
 
 
+def test_contains_gold_token_subsequence():
+    verbose = "The Maine Legislature convenes at the State House in Augusta, Maine."
+    assert contains_gold(verbose, "Augusta Maine") == 1.0  # contiguous gold span present
+    assert contains_gold(verbose, "Boston") == 0.0  # wrong answer not contained
+    assert contains_gold("yesterday", "yes") == 0.0  # token-level, not raw substring
+    assert contains_gold("yes I agree", "yes") == 1.0
+    # non-contiguous tokens must NOT count (gold span must be contiguous)
+    assert contains_gold("augusta is in maine", "augusta maine") == 0.0
+
+
 # --- completeness -----------------------------------------------------------------------------
 
 
@@ -142,6 +153,10 @@ def test_enum_quality_perfect(results):
     q = results["per_arm"]["enum"]["quality"]
     assert q["em_mean"] == 1.0 and q["em_std"] == 0.0
     assert q["f1_mean"] == 1.0
+    # enum answers are exactly the gold -> always contained, single-token, gold char lengths.
+    assert q["containment_mean"] == 1.0 and q["containment_std"] == 0.0
+    assert q["answer_len_tokens_mean"] == 1.0
+    assert q["answer_len_chars_mean"] == pytest.approx((5 + 6 + 6) / 3)  # Paris/London/Berlin
 
 
 # --- free arm: deliberately varying -----------------------------------------------------------
@@ -166,10 +181,13 @@ def test_free_arm_varies(results):
 
 def test_free_quality_partial(results):
     q = results["per_arm"]["free"]["quality"]
-    # run2 answers are all wrong -> EM/F1 per run = [1, 0, 1].
+    # run2 answers are all wrong -> EM/F1/containment per run = [1, 0, 1].
     assert q["em_mean"] == pytest.approx(2 / 3)
     assert q["f1_mean"] == pytest.approx(2 / 3)
     assert q["em_per_run"] == [1.0, 0.0, 1.0]
+    assert q["containment_mean"] == pytest.approx(2 / 3)
+    assert q["containment_per_run"] == [1.0, 0.0, 1.0]
+    assert q["answer_len_tokens_mean"] == 1.0  # every answer is a single token
 
 
 # --- enum vs free comparison ------------------------------------------------------------------
@@ -186,6 +204,9 @@ def test_comparison_confidence_and_quality(results):
     quality = results["comparison"]["quality"]
     assert quality["delta_f1"] == pytest.approx(1 / 3)  # enum 1.0 - free 2/3
     assert quality["cliffs_delta"] == 1.0
+    # containment moves the same way here (enum 1.0 vs free 2/3).
+    assert quality["delta_containment"] == pytest.approx(1 / 3)
+    assert quality["containment_cliffs_delta"] == 1.0
 
 
 def test_results_are_json_serializable_after_sanitize(results):
