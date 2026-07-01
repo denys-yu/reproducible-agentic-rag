@@ -1,0 +1,280 @@
+{
+  "comparison": {
+    "answer.normalized": {
+      "agreement_ci95": [
+        -0.03266666666666667,
+        0.07733333333333332
+      ],
+      "cliffs_delta": 0.04133333333333333,
+      "delta_mean_agreement": 0.02533333333333332,
+      "enum_mean_agreement": 0.8513333333333334,
+      "free_mean_agreement": 0.8260000000000001,
+      "wilcoxon_p": 0.2869183119775657,
+      "wilcoxon_stat": 970.0
+    },
+    "grade.confidence": {
+      "agreement_ci95": [
+        0.017333333333333333,
+        0.09733333333333333
+      ],
+      "cliffs_delta": 0.10684444444444445,
+      "delta_kappa": 0.2658114301502298,
+      "delta_mean_agreement": 0.05600000000000005,
+      "enum_mean_agreement": 0.9653333333333334,
+      "free_mean_agreement": 0.9093333333333333,
+      "kappa_ci95": [
+        0.149206625133381,
+        0.4129722015545317
+      ],
+      "wilcoxon_p": 0.007865861747752204,
+      "wilcoxon_stat": 158.0
+    },
+    "grade.needs_more_context": {
+      "agreement_ci95": [
+        0.04133333333333333,
+        0.10266666666666667
+      ],
+      "cliffs_delta": 0.14826666666666666,
+      "delta_kappa": 0.16514309402318728,
+      "delta_mean_agreement": 0.07066666666666666,
+      "enum_mean_agreement": 0.9893333333333334,
+      "free_mean_agreement": 0.9186666666666667,
+      "kappa_ci95": [
+        0.09515230053952,
+        0.24639671080969455
+      ],
+      "wilcoxon_p": 3.9412132926078966e-05,
+      "wilcoxon_stat": 30.0
+    },
+    "grade.scope": {
+      "agreement_ci95": [
+        0.0013000000000000002,
+        0.05866666666666667
+      ],
+      "cliffs_delta": 0.05457777777777778,
+      "delta_kappa": 0.049063012620140456,
+      "delta_mean_agreement": 0.029333333333333322,
+      "enum_mean_agreement": 0.9826666666666667,
+      "free_mean_agreement": 0.9533333333333334,
+      "kappa_ci95": [
+        -0.000832863745236087,
+        0.10048434352665425
+      ],
+      "wilcoxon_p": 0.030660332602802043,
+      "wilcoxon_stat": 49.0
+    },
+    "quality": {
+      "cliffs_delta": -0.15462222222222222,
+      "containment_ci95": [
+        -0.025333333333333333,
+        0.06
+      ],
+      "containment_cliffs_delta": 0.018222222222222223,
+      "containment_wilcoxon_p": 0.4803269291292813,
+      "delta_containment": 0.01733333333333331,
+      "delta_f1": -0.10758761851906817,
+      "f1_ci95": [
+        -0.14869180509675178,
+        -0.06912440376308569
+      ],
+      "wilcoxon_p": 4.249997287900721e-07
+    },
+    "synthesize.confidence": {
+      "agreement_ci95": [
+        -0.016,
+        0.030683333333333316
+      ],
+      "cliffs_delta": 0.006933333333333333,
+      "delta_kappa": 0.027392167219090324,
+      "delta_mean_agreement": 0.007333333333333525,
+      "enum_mean_agreement": 0.9853333333333334,
+      "free_mean_agreement": 0.9779999999999999,
+      "kappa_ci95": [
+        -0.16319159610808542,
+        0.2018640223975667
+      ],
+      "wilcoxon_p": 0.5730427492875262,
+      "wilcoxon_stat": 14.0
+    },
+    "synthesize.scope": {
+      "agreement_ci95": [
+        -0.016,
+        0.03201666666666666
+      ],
+      "cliffs_delta": 0.007022222222222222,
+      "delta_kappa": 0.03087554228022127,
+      "delta_mean_agreement": 0.007999999999999896,
+      "enum_mean_agreement": 0.9853333333333334,
+      "free_mean_agreement": 0.9773333333333335,
+      "kappa_ci95": [
+        -0.1603165445231021,
+        0.20640688386180692
+      ],
+      "wilcoxon_p": 0.48222504475604,
+      "wilcoxon_stat": 13.0
+    }
+  },
+  "meta": {
+    "arms": [
+      "enum",
+      "free"
+    ],
+    "excluded_qids": [],
+    "k": 5,
+    "n_complete": 150,
+    "n_excluded": 0,
+    "runs_dir": "runs"
+  },
+  "per_arm": {
+    "enum": {
+      "answer": {
+        "bertscore_f1": null,
+        "cohen_kappa_normalized": 0.8504858919897895,
+        "cosine": null,
+        "ema_normalized": 0.8513333333333334,
+        "tar_a_normalized": 0.7266666666666667,
+        "tar_r_raw_answer": 0.7266666666666667,
+        "tar_r_raw_response": 0.7
+      },
+      "fields": {
+        "grade.confidence": {
+          "cohen_kappa": 0.9098793383902499,
+          "ema": 0.9653333333333334,
+          "fleiss_kappa": 0.90990990990991,
+          "tar_a": 0.9333333333333333
+        },
+        "grade.needs_more_context": {
+          "cohen_kappa": 0.9705122968524833,
+          "ema": 0.9893333333333334,
+          "fleiss_kappa": 0.9705350828946336,
+          "tar_a": 0.9733333333333334
+        },
+        "grade.scope": {
+          "cohen_kappa": 0.9683493578157453,
+          "ema": 0.9826666666666667,
+          "fleiss_kappa": 0.9683579222026782,
+          "tar_a": 0.96
+        },
+        "synthesize.confidence": {
+          "cohen_kappa": 0.8582700596425502,
+          "ema": 0.9853333333333334,
+          "fleiss_kappa": 0.8601173318864667,
+          "tar_a": 0.9733333333333334
+        },
+        "synthesize.scope": {
+          "cohen_kappa": 0.8582700596425502,
+          "ema": 0.9853333333333334,
+          "fleiss_kappa": 0.8601173318864667,
+          "tar_a": 0.9733333333333334
+        }
+      },
+      "quality": {
+        "answer_len_chars_mean": 97.52266666666667,
+        "answer_len_tokens_mean": 14.585333333333333,
+        "containment_mean": 0.6653333333333333,
+        "containment_per_run": [
+          0.6666666666666666,
+          0.66,
+          0.66,
+          0.6733333333333333,
+          0.6666666666666666
+        ],
+        "containment_std": 0.004988876515698573,
+        "em_mean": 0.028000000000000004,
+        "em_per_run": [
+          0.02666666666666667,
+          0.03333333333333333,
+          0.02666666666666667,
+          0.02666666666666667,
+          0.02666666666666667
+        ],
+        "em_std": 0.0026666666666666657,
+        "f1_mean": 0.25799411496535657,
+        "f1_per_run": [
+          0.2564113585149307,
+          0.2644185341254512,
+          0.2548976389633306,
+          0.2551535908475296,
+          0.25908945237554093
+        ],
+        "f1_std": 0.003539344133118008
+      },
+      "rewrite_rate": 0.23733333333333334
+    },
+    "free": {
+      "answer": {
+        "bertscore_f1": null,
+        "cohen_kappa_normalized": 0.8250387158315731,
+        "cosine": null,
+        "ema_normalized": 0.8260000000000001,
+        "tar_a_normalized": 0.6933333333333334,
+        "tar_r_raw_answer": 0.6666666666666666,
+        "tar_r_raw_response": 0.56
+      },
+      "fields": {
+        "grade.confidence": {
+          "cohen_kappa": 0.6440679082400201,
+          "ema": 0.9093333333333333,
+          "fleiss_kappa": 0.6436905277572064,
+          "tar_a": 0.8266666666666667
+        },
+        "grade.needs_more_context": {
+          "cohen_kappa": 0.805369202829296,
+          "ema": 0.9186666666666667,
+          "fleiss_kappa": 0.8052147108662518,
+          "tar_a": 0.8266666666666667
+        },
+        "grade.scope": {
+          "cohen_kappa": 0.9192863451956048,
+          "ema": 0.9533333333333334,
+          "fleiss_kappa": 0.919264057280998,
+          "tar_a": 0.9066666666666666
+        },
+        "synthesize.confidence": {
+          "cohen_kappa": 0.8308778924234599,
+          "ema": 0.9779999999999999,
+          "fleiss_kappa": 0.8294843883484433,
+          "tar_a": 0.9666666666666667
+        },
+        "synthesize.scope": {
+          "cohen_kappa": 0.8273945173623289,
+          "ema": 0.9773333333333335,
+          "fleiss_kappa": 0.8271936244612522,
+          "tar_a": 0.9666666666666667
+        }
+      },
+      "quality": {
+        "answer_len_chars_mean": 79.628,
+        "answer_len_tokens_mean": 11.861333333333333,
+        "containment_mean": 0.6479999999999999,
+        "containment_per_run": [
+          0.6466666666666666,
+          0.6533333333333333,
+          0.6533333333333333,
+          0.64,
+          0.6466666666666666
+        ],
+        "containment_std": 0.004988876515698585,
+        "em_mean": 0.13599999999999998,
+        "em_per_run": [
+          0.13333333333333333,
+          0.13333333333333333,
+          0.13333333333333333,
+          0.14666666666666667,
+          0.13333333333333333
+        ],
+        "em_std": 0.005333333333333335,
+        "f1_mean": 0.36558173348442474,
+        "f1_per_run": [
+          0.363944912742966,
+          0.36525170978111793,
+          0.3620702109552056,
+          0.3684908720571782,
+          0.3681509618856559
+        ],
+        "f1_std": 0.002456945667726589
+      },
+      "rewrite_rate": 0.2946666666666667
+    }
+  }
+}
