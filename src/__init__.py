@@ -1,6 +1,6 @@
-"""Reproducible-by-Design Agentic RAG — research artifact for the ICSFTI 2026 paper.
+"""Reproducible-by-Design Agentic RAG — research artifact for the accompanying paper.
 
-Package layout (see CLAUDE.md for the authoritative spec):
+Package layout:
     config         frozen reproducibility parameters + CLI (the single source of truth)
     data           HotpotQA loader, SHA-256 doc_ids, seeded sampling
     index          ChromaDB persistent index builder + deterministic retrieval

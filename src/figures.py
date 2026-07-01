@@ -1,4 +1,4 @@
-"""Publication-quality figures for the ICSFTI 2026 agentic-RAG reproducibility paper.
+"""Publication-quality figures for the agentic-RAG reproducibility paper.
 
 Reads a pre-computed metrics summary (`results.json`, produced by `src.metrics`) and renders two
 grouped bar charts, each saved as both a 300-dpi PNG and a vector PDF into `figures/`:

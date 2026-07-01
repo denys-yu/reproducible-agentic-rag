@@ -2,8 +2,8 @@
 
 Each model snapshot, decoding param, randomness seed, dataset identifier, and filesystem
 path used anywhere in the experiment is declared here exactly once. No other module is
-allowed to hardcode these values — they import `Config` instead (CLAUDE.md: "Every randomness
-source seeded from one place in config.py").
+allowed to hardcode these values — they import `Config` instead, so every randomness source
+is seeded from one place.
 
 Resolution precedence (highest first):
     1. CLI flags     (e.g. --n-questions 10 --arm enum)

@@ -17,8 +17,9 @@ containment of the gold answer is statistically indistinguishable between arms (
 > the answer) as the correctness control precisely to separate this formatting/verbosity effect from
 > a real accuracy loss. See `src/figures.py` and the generated figures.
 
-This is a local, reproducible-by-design research artifact — not a production system. See `CLAUDE.md`
-for the full set of frozen reproducibility invariants and the experiment design.
+This is a local, reproducible-by-design research artifact — not a production system. The full set of
+frozen reproducibility invariants and the experiment design are documented in the sections below and
+in the accompanying paper.
 
 ## Requirements
 

@@ -1,6 +1,6 @@
 """Thin entry point. Delegates to the experiment driver in `src.run_experiment`.
 
-Prefer the module commands documented in CLAUDE.md (e.g. `uv run python -m src.run_experiment`);
+Prefer the module commands documented in the README (e.g. `uv run python -m src.run_experiment`);
 this file exists only so `python main.py` also works.
 """
 
