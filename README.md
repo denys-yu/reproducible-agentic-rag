@@ -121,14 +121,3 @@ paragraphs (2 gold + 8 distractors), which are used as-is; a fixed `numpy` seed 
 
 Released under the **MIT License**.
 
-## Citation
-
-```bibtex
-@inproceedings{TODO2026reproducible,
-  title     = {TODO: Enum-Constrained Structured Outputs and Inter-Run Agreement in Agentic RAG},
-  author    = {TODO},
-  booktitle = {Proceedings of ICSFTI 2026},
-  year      = {2026},
-  note      = {Placeholder — fill in on publication.}
-}
-```
