@@ -1,6 +1,6 @@
 # Reproducible-by-Design Agentic RAG
 
-Research artifact for an ICSFTI 2026 paper on **reproducibility of enum-constrained structured
+Research artifact for a paper on **reproducibility of enum-constrained structured
 outputs in agentic RAG**. It measures whether forcing every LLM step to return a Pydantic model
 with `Enum` fields (the `enum` arm) yields higher **inter-run agreement** than free-form text (the
 `free` arm) in an agentic retrieval-augmented pipeline over the HotpotQA distractor dev set — while
