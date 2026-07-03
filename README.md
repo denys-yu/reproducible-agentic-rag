@@ -2,11 +2,17 @@
 
 Attribution and Contact
 
-This repository is provided for research and educational purposes. If you use this codebase, experiments, or ideas in your own work, please acknowledge the author.
-
-For questions, collaboration, or consulting related to RAG systems, chunking strategies, or experimental research pipelines, you are welcome to contact the author or engage them as a consultant.
-
-🔗 LinkedIn: https://www.linkedin.com/in/dyuvzhenko
+> **Attribution and Contact**
+>  
+> This repository is provided for research and educational purposes.
+> If you use this codebase, experiments, or ideas in your own work,
+> please acknowledge the author.
+>  
+> For questions, collaboration, or consulting related to AI, RAG systems,
+> chunking strategies, or experimental research pipelines,
+> you are welcome to contact the author or engage them as a consultant.
+>  
+> 🔗 LinkedIn: https://www.linkedin.com/in/dyuvzhenko
 
 Research artifact for a paper on **reproducibility of enum-constrained structured
 outputs in agentic RAG**. It measures whether forcing every LLM step to return a Pydantic model
