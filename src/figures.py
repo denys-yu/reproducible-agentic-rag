@@ -1,22 +1,33 @@
-"""Publication-quality figures for the agentic-RAG reproducibility paper.
+"""Print-ready, grayscale, bilingual figures for the agentic-RAG reproducibility paper.
 
 Reads a pre-computed metrics summary (`results.json`, produced by `src.metrics`) and renders two
-grouped bar charts, each saved as both a 300-dpi PNG and a vector PDF into `figures/`:
+grouped bar charts. Each figure is produced in BOTH language variants (Ukrainian and English) in a
+single run, and each variant is saved as a 600-dpi PNG and a vector PDF into `figures/`:
 
-  * Figure 1 — inter-run Cohen's kappa per judgement (enum vs free), with Wilcoxon significance
-    markers read from the paired comparison block.
-  * Figure 2 — answer quality vs HotpotQA gold (EM, token-F1, containment), enum vs free.
+  * `kappa_by_field_<lang>` — mean pairwise Cohen's kappa per judgement field (structured vs free
+    text), annotated with Holm-corrected paired-Wilcoxon p-values (pH) over the six endpoints.
+  * `answer_quality_<lang>` — answer quality vs HotpotQA gold (Exact Match, token-F1, gold-answer
+    containment), annotated with paired-Wilcoxon p-values (Exact Match is a descriptive comparison).
 
-This module NEVER re-runs the experiment or makes LLM calls; it only reads numbers from the JSON.
-It is fully deterministic (no randomness, no sampling). Figures are legible in grayscale: the two
-arms are distinguished by a colour-blind-safe colour AND a distinct hatch pattern, not colour alone,
-and the styling is kept consistent across both figures.
+This module NEVER re-runs the experiment or makes LLM calls; it only reads numbers from the JSON,
+and it never recomputes or mutates any statistic stored in `results.json`. The one derived quantity,
+the Holm correction, is a display-only transform of the six raw p-values already in the file and is
+applied identically for both languages.
+
+Grayscale-safe by design (legible in print and when photocopied): the two arms are distinguished by
+BOTH fill lightness AND hatch pattern with black edges — the enum arm is white with a `///` hatch,
+the free-text arm is mid-gray (`0.65`) with a `...` hatch. No colour is used anywhere. All numbers
+drawn on a figure follow the variant's locale (decimal comma for `uk`, decimal point for `en`).
+
+Layout, axis limits, tick positions, bar widths, and data are identical between language variants;
+only the text differs.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -25,18 +36,23 @@ import matplotlib
 matplotlib.use("Agg")  # headless, deterministic backend
 import matplotlib.pyplot as plt
 
-# --- Arm styling (consistent across both figures) --------------------------------------------
-# Colour-blind-safe (Wong / Okabe-Ito) plus distinct hatches so bars separate in grayscale.
+from src.labels import FIGURE_IDS, LABELS, LANGS
+
+# --- Arm styling (grayscale-safe, consistent across both figures) ----------------------------
+# Distinguished by BOTH fill lightness AND hatch, with black edges, so bars separate in print and
+# when photocopied. `label_key` names the per-figure legend string looked up in `labels.py`.
 ARM_STYLE: dict[str, dict[str, str]] = {
-    "enum": {"label": "enum (structured)", "color": "#0072B2", "hatch": "///"},
-    "free": {"label": "free (free-form)", "color": "#E69F00", "hatch": "..."},
+    "enum": {"facecolor": "white", "hatch": "///"},
+    "free": {"facecolor": "0.65", "hatch": "..."},
 }
 ARM_ORDER: list[str] = ["enum", "free"]
 
 _BAR_WIDTH = 0.38
 _EDGE_COLOR = "black"
+_EDGE_WIDTH = 1.0
+_GRID_COLOR = "0.8"  # light gray gridlines, behind the bars
 
-# Base font sizes (legible, ~11-12 pt).
+# Everything ink-black; no colour anywhere.
 plt.rcParams.update(
     {
         "font.size": 11,
@@ -47,35 +63,74 @@ plt.rcParams.update(
         "ytick.labelsize": 10.5,
         "hatch.linewidth": 0.8,
         "figure.dpi": 100,
-        "savefig.dpi": 300,
+        "savefig.dpi": 600,
+        "text.color": "black",
+        "axes.edgecolor": "black",
+        "axes.labelcolor": "black",
+        "xtick.color": "black",
+        "ytick.color": "black",
     }
 )
 
 
+# --- Data / statistics helpers (read-only; no experiment statistic is recomputed) -------------
 def load_results(path: Path) -> dict[str, Any]:
     """Load the metrics summary JSON."""
     with path.open(encoding="utf-8") as fh:
         return json.load(fh)
 
 
-def significance_marker(p: float | None) -> str:
-    """Star coding for a Wilcoxon p-value: *** <0.001, ** <0.01, * <0.05, else 'n.s.'."""
-    if p is None:
-        return "n.s."
-    if p < 0.001:
-        return "***"
-    if p < 0.01:
-        return "**"
-    if p < 0.05:
-        return "*"
-    return "n.s."
+def holm_adjust(pvalues: list[float]) -> list[float]:
+    """Holm step-down adjustment of a family of p-values, returned in the input order.
+
+    This is a display-only multiple-comparison transform of p-values already present in
+    `results.json`; it does not read from or write to any experiment metric.
+    """
+    m = len(pvalues)
+    order = sorted(range(m), key=lambda i: pvalues[i])
+    adjusted = [0.0] * m
+    running = 0.0
+    for rank, idx in enumerate(order):
+        running = max(running, min(pvalues[idx] * (m - rank), 1.0))
+        adjusted[idx] = running
+    return adjusted
 
 
-def _add_value_labels(ax: plt.Axes, bars: Any, values: list[float]) -> None:
-    """Print each bar's value (two decimals) just above its top."""
+# --- Locale-aware number formatting -----------------------------------------------------------
+_SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
+
+
+def format_value(value: float, lang: str) -> str:
+    """Two-decimal bar value in the variant's locale (e.g. '0,91' / '0.91')."""
+    return f"{value:.2f}".replace(".", LABELS[lang]["decimal_sep"])
+
+
+def format_pvalue(p: float, lang: str) -> str:
+    """Format a p-value to 3 significant figures in the variant's locale.
+
+    Values below 1e-4 use scientific notation with a proper '×' and superscript exponent
+    (e.g. '4,25×10⁻⁷' / '4.25×10⁻⁷'); larger values use plain decimals (e.g. '0,000236').
+    """
+    sep = LABELS[lang]["decimal_sep"]
+    if p < 1e-4:
+        exp = math.floor(math.log10(p))
+        mantissa = p / (10.0**exp)
+        if mantissa >= 10.0:  # guard against rounding to '10.00×10ⁿ'
+            mantissa /= 10.0
+            exp += 1
+        mantissa_str = f"{mantissa:.2f}".replace(".", sep)
+        return f"{mantissa_str}×10{str(exp).translate(_SUPERSCRIPT)}"
+    exp = math.floor(math.log10(p))
+    decimals = max(0, 2 - exp)  # 3 significant figures
+    return f"{p:.{decimals}f}".replace(".", sep)
+
+
+# --- Drawing helpers --------------------------------------------------------------------------
+def _add_value_labels(ax: plt.Axes, bars: Any, values: list[float], lang: str) -> None:
+    """Print each bar's value (locale-formatted) just above its top."""
     for rect, value in zip(bars, values, strict=True):
         ax.annotate(
-            f"{value:.2f}",
+            format_value(value, lang),
             xy=(rect.get_x() + rect.get_width() / 2, rect.get_height()),
             xytext=(0, 3),
             textcoords="offset points",
@@ -85,24 +140,14 @@ def _add_value_labels(ax: plt.Axes, bars: Any, values: list[float]) -> None:
         )
 
 
-def _save(fig: plt.Figure, out_dir: Path, stem: str) -> tuple[Path, Path]:
-    """Save `fig` as both PNG (300 dpi) and vector PDF; return the two paths."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    png_path = out_dir / f"{stem}.png"
-    pdf_path = out_dir / f"{stem}.pdf"
-    fig.savefig(png_path, dpi=300, bbox_inches="tight")
-    fig.savefig(pdf_path, bbox_inches="tight")  # PDF is vector regardless of dpi
-    plt.close(fig)
-    return png_path, pdf_path
-
-
 def _grouped_bars(
     ax: plt.Axes,
     values_by_arm: dict[str, list[float]],
     x_positions: list[float],
-) -> dict[str, Any]:
-    """Draw one clustered pair of bars (enum, free) per x position; return the bar containers."""
-    containers: dict[str, Any] = {}
+    arm_labels: dict[str, str],
+    lang: str,
+) -> None:
+    """Draw one clustered pair of bars (enum, free) per x position, with value labels."""
     offsets = {"enum": -_BAR_WIDTH / 2, "free": _BAR_WIDTH / 2}
     for arm in ARM_ORDER:
         style = ARM_STYLE[arm]
@@ -111,28 +156,67 @@ def _grouped_bars(
             positions,
             values_by_arm[arm],
             width=_BAR_WIDTH,
-            color=style["color"],
+            facecolor=style["facecolor"],
             hatch=style["hatch"],
             edgecolor=_EDGE_COLOR,
-            linewidth=0.8,
-            label=style["label"],
+            linewidth=_EDGE_WIDTH,
+            label=arm_labels[arm],
         )
-        _add_value_labels(ax, bars, values_by_arm[arm])
-        containers[arm] = bars
-    return containers
+        _add_value_labels(ax, bars, values_by_arm[arm], lang)
 
 
-def make_figure1(results: dict[str, Any], out_dir: Path) -> tuple[Path, Path]:
-    """Figure 1: inter-run Cohen's kappa per judgement, enum vs free, with significance markers."""
-    # (x-axis label, per-arm value accessor, comparison key) in fixed left-to-right order.
-    judgements: list[tuple[str, str, str]] = [
-        ("Confidence\n(grading)", "grade.confidence", "grade.confidence"),
-        ("Context scope\n(grading)", "grade.scope", "grade.scope"),
-        ("Re-retrieval decision\n(grading)", "grade.needs_more_context", "grade.needs_more_context"),
-        ("Confidence\n(synthesis)", "synthesize.confidence", "synthesize.confidence"),
-        ("Answer scope\n(synthesis)", "synthesize.scope", "synthesize.scope"),
-        ("Final\nanswer", "__answer__", "answer.normalized"),
-    ]
+def _annotate_pair(ax: plt.Axes, x: float, pair_top: float, text: str) -> None:
+    """Draw the p-value (or descriptive) line just above a bar pair, clear of the value labels."""
+    ax.annotate(
+        text,
+        xy=(x, pair_top),
+        xytext=(0, 16),
+        textcoords="offset points",
+        ha="center",
+        va="bottom",
+        fontsize=8.5,
+    )
+
+
+def _style_axes(ax: plt.Axes) -> None:
+    """Light gridlines behind bars, black text, clean journal-style spines."""
+    ax.set_axisbelow(True)
+    ax.yaxis.grid(True, color=_GRID_COLOR, linewidth=0.6)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+
+def _add_footnote(fig: plt.Figure, text: str) -> None:
+    """Render a centered, small-print explanatory line below the axes (smaller than tick labels)."""
+    fig.text(0.5, 0.015, text, ha="center", va="bottom", fontsize=8, wrap=True)
+
+
+def _save(fig: plt.Figure, out_dir: Path, figure_key: str, lang: str) -> tuple[Path, Path]:
+    """Save `fig` as `<figure_id>_<lang>` in both PNG (600 dpi) and vector PDF; return the paths."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stem = f"{FIGURE_IDS[figure_key]}_{lang}"
+    png_path = out_dir / f"{stem}.png"
+    pdf_path = out_dir / f"{stem}.pdf"
+    fig.savefig(png_path, dpi=600, bbox_inches="tight")
+    fig.savefig(pdf_path, bbox_inches="tight")  # PDF is vector regardless of dpi
+    plt.close(fig)
+    return png_path, pdf_path
+
+
+# --- Figure 1: mean pairwise Cohen's kappa by field -------------------------------------------
+# (label key, kappa field accessor, comparison key) in fixed left-to-right order (paper Table 2).
+_FIG1_FIELDS: list[tuple[str, str, str]] = [
+    ("fig1_cat_grade_conf", "grade.confidence", "grade.confidence"),
+    ("fig1_cat_grade_scope", "grade.scope", "grade.scope"),
+    ("fig1_cat_grade_needs", "grade.needs_more_context", "grade.needs_more_context"),
+    ("fig1_cat_syn_conf", "synthesize.confidence", "synthesize.confidence"),
+    ("fig1_cat_syn_scope", "synthesize.scope", "synthesize.scope"),
+    ("fig1_cat_answer", "__answer__", "answer.normalized"),
+]
+
+
+def _fig1_data(results: dict[str, Any]) -> dict[str, Any]:
+    """Extract Figure 1 numbers once (language-independent), including Holm-adjusted p-values."""
 
     def kappa(arm: str, field_key: str) -> float:
         arm_block = results["per_arm"][arm]
@@ -140,97 +224,96 @@ def make_figure1(results: dict[str, Any], out_dir: Path) -> tuple[Path, Path]:
             return float(arm_block["answer"]["cohen_kappa_normalized"])
         return float(arm_block["fields"][field_key]["cohen_kappa"])
 
-    x_labels = [j[0] for j in judgements]
     values_by_arm = {
-        arm: [kappa(arm, field_key) for _, field_key, _ in judgements] for arm in ARM_ORDER
+        arm: [kappa(arm, field_key) for _, field_key, _ in _FIG1_FIELDS] for arm in ARM_ORDER
     }
-    markers = [
-        significance_marker(results["comparison"][cmp_key].get("wilcoxon_p"))
-        for _, _, cmp_key in judgements
-    ]
+    raw_p = [float(results["comparison"][cmp_key]["wilcoxon_p"]) for *_, cmp_key in _FIG1_FIELDS]
+    return {
+        "label_keys": [lk for lk, _, _ in _FIG1_FIELDS],
+        "values_by_arm": values_by_arm,
+        "pvalues": holm_adjust(raw_p),  # display-only Holm correction over the six endpoints
+    }
 
-    x_positions = list(range(len(judgements)))
-    fig, ax = plt.subplots(figsize=(11, 5.2))
-    _grouped_bars(ax, values_by_arm, [float(x) for x in x_positions])
 
-    # Significance marker centred above each enum/free pair.
-    for x, marker in zip(x_positions, markers, strict=True):
-        pair_top = max(values_by_arm["enum"][x], values_by_arm["free"][x])
-        ax.annotate(
-            marker,
-            xy=(x, pair_top),
-            xytext=(0, 15),
-            textcoords="offset points",
-            ha="center",
-            va="bottom",
-            fontsize=11,
-            fontweight="bold",
-        )
+def make_figure1(data: dict[str, Any], out_dir: Path, lang: str) -> tuple[Path, Path]:
+    """Render Figure 1 (kappa by field) for one language."""
+    L = LABELS[lang]
+    values_by_arm = data["values_by_arm"]
+    x_positions = [float(i) for i in range(len(_FIG1_FIELDS))]
+
+    fig, ax = plt.subplots(figsize=(11, 5.6))
+    arm_labels = {"enum": L["fig1_legend_enum"], "free": L["fig1_legend_free"]}
+    _grouped_bars(ax, values_by_arm, x_positions, arm_labels, lang)
+
+    for x, p in zip(x_positions, data["pvalues"], strict=True):
+        pair_top = max(values_by_arm["enum"][int(x)], values_by_arm["free"][int(x)])
+        _annotate_pair(ax, x, pair_top, f"{L['fig1_annot_p_prefix']}{format_pvalue(p, lang)}")
 
     ax.set_ylim(0.0, 1.0)
-    ax.set_ylabel("Cohen's κ (inter-run agreement)")
+    ax.set_ylabel(L["fig1_y_axis"])
     ax.set_xticks(x_positions)
-    ax.set_xticklabels(x_labels)
-    ax.set_axisbelow(True)
-    ax.yaxis.grid(True, linewidth=0.5, alpha=0.4)
+    ax.set_xticklabels([L[lk] for lk in data["label_keys"]])
+    _style_axes(ax)
     ax.legend(loc="lower right", framealpha=0.95)
-    _strip_chartjunk(ax)
 
-    fig.tight_layout()
-    return _save(fig, out_dir, "fig1_agreement_kappa")
+    fig.tight_layout(rect=(0.0, 0.07, 1.0, 1.0))
+    _add_footnote(fig, L["fig1_footnote"])
+    return _save(fig, out_dir, "fig1", lang)
 
 
-def make_figure2(results: dict[str, Any], out_dir: Path) -> tuple[Path, Path]:
-    """Figure 2: answer quality vs gold (EM, token-F1, containment), enum vs free."""
-    # (x-axis label, quality key, significance annotation).
-    metrics: list[tuple[str, str, str]] = [
-        ("Exact match", "em_mean", "*"),
-        ("Token-F1", "f1_mean", "***"),
-        ("Containment", "containment_mean", "n.s."),
-    ]
+# --- Figure 2: answer quality vs gold ---------------------------------------------------------
+# (label key, quality accessor, comparison p-value key or None for a descriptive comparison).
+_FIG2_METRICS: list[tuple[str, str, str | None]] = [
+    ("fig2_m_em", "em_mean", None),
+    ("fig2_m_f1", "f1_mean", "wilcoxon_p"),
+    ("fig2_m_containment", "containment_mean", "containment_wilcoxon_p"),
+]
 
-    x_labels = [m[0] for m in metrics]
+
+def _fig2_data(results: dict[str, Any]) -> dict[str, Any]:
+    """Extract Figure 2 numbers once (language-independent)."""
+    quality_cmp = results["comparison"]["quality"]
     values_by_arm = {
-        arm: [float(results["per_arm"][arm]["quality"][key]) for _, key, _ in metrics]
+        arm: [float(results["per_arm"][arm]["quality"][key]) for _, key, _ in _FIG2_METRICS]
         for arm in ARM_ORDER
     }
-    markers = [m[2] for m in metrics]
+    pvalues = [None if pk is None else float(quality_cmp[pk]) for *_, pk in _FIG2_METRICS]
+    return {
+        "label_keys": [lk for lk, _, _ in _FIG2_METRICS],
+        "values_by_arm": values_by_arm,
+        "pvalues": pvalues,
+    }
 
-    x_positions = list(range(len(metrics)))
-    fig, ax = plt.subplots(figsize=(7.5, 5.0))
-    _grouped_bars(ax, values_by_arm, [float(x) for x in x_positions])
 
-    for x, marker in zip(x_positions, markers, strict=True):
-        pair_top = max(values_by_arm["enum"][x], values_by_arm["free"][x])
-        ax.annotate(
-            marker,
-            xy=(x, pair_top),
-            xytext=(0, 15),
-            textcoords="offset points",
-            ha="center",
-            va="bottom",
-            fontsize=11,
-            fontweight="bold",
+def make_figure2(data: dict[str, Any], out_dir: Path, lang: str) -> tuple[Path, Path]:
+    """Render Figure 2 (answer quality) for one language."""
+    L = LABELS[lang]
+    values_by_arm = data["values_by_arm"]
+    x_positions = [float(i) for i in range(len(_FIG2_METRICS))]
+
+    fig, ax = plt.subplots(figsize=(7.5, 5.2))
+    arm_labels = {"enum": L["fig2_legend_enum"], "free": L["fig2_legend_free"]}
+    _grouped_bars(ax, values_by_arm, x_positions, arm_labels, lang)
+
+    for x, p in zip(x_positions, data["pvalues"], strict=True):
+        pair_top = max(values_by_arm["enum"][int(x)], values_by_arm["free"][int(x)])
+        text = (
+            L["fig2_annot_descriptive"]
+            if p is None
+            else f"{L['fig2_annot_p_prefix']}{format_pvalue(p, lang)}"
         )
+        _annotate_pair(ax, x, pair_top, text)
 
     ax.set_ylim(0.0, 0.8)
-    ax.set_ylabel("Score (vs. gold)")
+    ax.set_ylabel(L["fig2_y_axis"])
     ax.set_xticks(x_positions)
-    ax.set_xticklabels(x_labels)
-    ax.set_axisbelow(True)
-    ax.yaxis.grid(True, linewidth=0.5, alpha=0.4)
-    # Upper-left: the "Containment" pair is tallest and its n.s. marker sits at upper-right.
+    ax.set_xticklabels([L[lk] for lk in data["label_keys"]])
+    _style_axes(ax)
     ax.legend(loc="upper left", framealpha=0.95)
-    _strip_chartjunk(ax)
 
-    fig.tight_layout()
-    return _save(fig, out_dir, "fig2_quality")
-
-
-def _strip_chartjunk(ax: plt.Axes) -> None:
-    """Remove top/right spines for a clean, journal-style axis."""
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+    fig.tight_layout(rect=(0.0, 0.07, 1.0, 1.0))
+    _add_footnote(fig, L["fig2_footnote"])
+    return _save(fig, out_dir, "fig2", lang)
 
 
 def main() -> None:
@@ -250,11 +333,16 @@ def main() -> None:
     args = parser.parse_args()
 
     results = load_results(args.results)
-    fig1_png, fig1_pdf = make_figure1(results, args.out_dir)
-    fig2_png, fig2_pdf = make_figure2(results, args.out_dir)
+    fig1_data = _fig1_data(results)
+    fig2_data = _fig2_data(results)
+
+    written: list[Path] = []
+    for lang in LANGS:
+        written.extend(make_figure1(fig1_data, args.out_dir, lang))
+        written.extend(make_figure2(fig2_data, args.out_dir, lang))
 
     print("Wrote:")
-    for path in (fig1_png, fig1_pdf, fig2_png, fig2_pdf):
+    for path in written:
         print(f"  {path}")
 
 

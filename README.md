@@ -119,9 +119,10 @@ hosted API is unattainable, so we do not claim "deterministic." The safeguards i
 | `src/provenance.py` | Append-only JSONL provenance logger, one record per LLM call. |
 | `src/run_experiment.py` | Sequential driver: for each arm × run × question → one pipeline invocation. |
 | `src/metrics.py` | Cohen's/Fleiss' κ, TARa/TARr, EMA, EM/token-F1/containment, Wilcoxon + bootstrap → `results.json`. |
-| `src/figures.py` | Grayscale-safe publication figures (agreement κ, quality) from `results.json` → `figures/`. |
+| `src/figures.py` | Grayscale-safe, bilingual (uk/en) publication figures (agreement κ, quality) from `results.json` → `figures/`. |
+| `src/labels.py` | i18n label strings (uk/en) for the figures; the single source of on-figure text. |
 | `runs/` | Per-`(arm, run)` provenance manifests (git-ignored). |
-| `figures/` | Generated PNG (300 dpi) + PDF figures. |
+| `figures/` | Generated `<figure_id>_<lang>` PNG (600 dpi) + vector PDF figures. |
 | `chroma/`, `data/`, `.cache/` | Persisted index, downloaded dataset, and exact-match cache (all git-ignored). |
 
 ## Dataset
