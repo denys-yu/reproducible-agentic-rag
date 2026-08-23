@@ -9,8 +9,17 @@ from __future__ import annotations
 import json
 import warnings
 
-from src.config import Config, SchemaVariant
-from src.llm import CallResult, call_llm, make_llm, parse_free_response
+import pytest
+
+from src.config import Config, ModelName, SchemaVariant
+from src.llm import (
+    CallResult,
+    assert_outbound_params,
+    call_llm,
+    make_llm,
+    parse_free_response,
+    required_request_params,
+)
 from src.provenance import ProvenanceLogger
 from src.schemas import AnswerScope, AnswerV1, ConfidenceLevel, schema_sha256
 
@@ -85,6 +94,55 @@ def test_make_llm_uses_pinned_config(monkeypatch):
     assert param("seed") == 42
 
 
+# --- outbound-parameter guard -----------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", [ModelName.GPT_4O_MINI, ModelName.GPT_5_6_LUNA])
+def test_pinned_params_survive_into_the_outbound_request(monkeypatch, name):
+    """Every param the profile pins must appear in the payload the client actually sends."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    config = Config(model=name)
+    llm = make_llm(config)
+
+    payload = assert_outbound_params(config, llm)  # raises if any pinned param went missing
+    for param, expected in required_request_params(config).items():
+        assert payload[param] == expected, f"{param} did not survive into the request"
+
+
+def test_reasoning_effort_is_mandatory_for_the_gpt_5_6_profile(monkeypatch):
+    """The gpt-5.6 profile must send reasoning_effort=none — without it the API rejects temp=0."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    config = Config(model=ModelName.GPT_5_6_LUNA)
+    assert required_request_params(config)["reasoning_effort"] == "none"
+    assert assert_outbound_params(config, make_llm(config))["reasoning_effort"] == "none"
+
+
+def test_guard_reports_the_mechanism_used_to_deliver_params(monkeypatch):
+    """langchain_openai strips `temperature` for gpt-5.x; the guard must reroute, not shrug."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    report = []
+    make_llm(Config(model=ModelName.GPT_5_6_LUNA), report=report)
+    assert report[0].mechanism == "model_kwargs"
+    assert "temperature" in report[0].rerouted
+
+    baseline = []
+    make_llm(Config(model=ModelName.GPT_4O_MINI), report=baseline)
+    assert baseline[0].mechanism == "direct"
+    assert baseline[0].rerouted == []
+
+
+def test_a_param_that_cannot_be_delivered_aborts(monkeypatch):
+    """If a pinned param survives neither route, construction fails loud instead of downgrading."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    config = Config(model=ModelName.GPT_5_6_LUNA)
+    monkeypatch.setattr(
+        "src.llm.resolve_request_payload",
+        lambda model, messages: {"model": config.llm_model},  # everything stripped
+    )
+    with pytest.raises(RuntimeError, match="do not survive"):
+        make_llm(config)
+
+
 # --- parse_free_response ----------------------------------------------------------------------
 
 
@@ -141,6 +199,7 @@ def test_call_llm_enum_parses_structured_and_logs(tmp_path):
         variant=SchemaVariant.ANSWER_V1,
         messages=[{"role": "user", "content": "capital of France?"}],
         config=config,
+        condition="published",
         logger=logger,
         run_id="run-enum",
         question_id="q1",
@@ -185,6 +244,7 @@ def test_call_llm_free_parses_text_and_logs_null_schema(tmp_path):
         variant=SchemaVariant.ANSWER_V1,
         messages=[{"role": "user", "content": "is the context enough?"}],
         config=config,
+        condition="published",
         logger=logger,
         run_id="run-free",
         question_id="q1",
@@ -287,6 +347,7 @@ def _enum_call(config, logger):
         variant=SchemaVariant.ANSWER_V1,
         messages=[{"role": "user", "content": "capital of France?"}],
         config=config,
+        condition="published",
         logger=logger,
         run_id="run-json",
         question_id="q1",
@@ -352,6 +413,7 @@ def test_no_serialization_warning_on_real_langchain_unvalidated_model(tmp_path):
             variant=SchemaVariant.ANSWER_V1,
             messages=[{"role": "user", "content": "capital of France?"}],
             config=config,
+            condition="published",
             logger=logger,
             run_id="run-unval",
             question_id="q1",
@@ -424,7 +486,8 @@ def test_threaded_serializer_warning_reproduces_then_is_suppressed(tmp_path):
         warnings.simplefilter("always")
         call_llm(
             node="synthesize", arm="enum", variant=SchemaVariant.ANSWER_V1,
-            messages=[{"role": "user", "content": "q"}], config=config, logger=logger,
+            messages=[{"role": "user", "content": "q"}], config=config, condition="published",
+            logger=logger,
             run_id="run-suppress", question_id="q1", retrieved_ids=[], retrieved_scores=[], model=fake,
         )
         logger.close()
@@ -440,7 +503,8 @@ def test_callresult_parsed_is_plain_dict_and_accessors_coerce(tmp_path):
     logger = ProvenanceLogger.for_run("run-cr", config)
     result = call_llm(
         node="synthesize", arm="enum", variant=SchemaVariant.ANSWER_V1,
-        messages=[{"role": "user", "content": "q"}], config=config, logger=logger,
+        messages=[{"role": "user", "content": "q"}], config=config, condition="published",
+            logger=logger,
         run_id="run-cr", question_id="q1", retrieved_ids=[_DOC_ID], retrieved_scores=[0.9], model=fake,
     )
     logger.close()

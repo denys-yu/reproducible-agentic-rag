@@ -172,3 +172,24 @@ def load_sampled_questions(config: Config) -> list[Question]:
     subset = [q for q in questions if q["question_id"] in chosen]
     subset.sort(key=lambda q: q["question_id"])
     return subset
+
+
+def load_questions_by_ids(config: Config, question_ids: Sequence[str]) -> list[Question]:
+    """Load the dev split and return exactly the questions named by `question_ids`, sorted by id.
+
+    The counterpart to `sample_question_ids` for pinned runs: the caller states which questions it
+    wants and gets those, with no RNG in the path at all. Missing ids are NOT silently skipped —
+    they are reported in full, because a run that quietly executes 148 of 150 questions produces
+    numbers that look valid and are not.
+    """
+    wanted = list(dict.fromkeys(str(qid) for qid in question_ids))
+    questions = load_dataset_split(config)
+    by_id = {q["question_id"]: q for q in questions}
+
+    missing = [qid for qid in wanted if qid not in by_id]
+    if missing:
+        raise ValueError(
+            f"{len(missing)} of {len(wanted)} requested question ids are absent from "
+            f"{config.dataset_name}/{config.dataset_config}[{config.dataset_split}]: {missing}"
+        )
+    return sorted((by_id[qid] for qid in wanted), key=lambda q: q["question_id"])

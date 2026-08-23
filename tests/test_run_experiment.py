@@ -11,11 +11,12 @@ import json
 import chromadb
 
 from src.agent import GRADE_PROMPT, REWRITE_PROMPT, SYNTHESIZE_PROMPT
-from src.config import Arm, Config
+from src.config import Arm, Condition, Config
 from src.data import Chunk
 from src.index import build_index
 from src.run_experiment import run_experiment
 from src.schemas import AnswerScope, AnswerV1, ConfidenceLevel, ContextGrade, RewriteQuery
+from tests.conftest import init_git_repo
 
 _QIDS = ["q1", "q2"]
 
@@ -36,12 +37,14 @@ class FakeMessage:
 
 
 def _node_of(messages):
+    # Prefix match, not equality: the free arm appends FREE_FORMAT_SUFFIX to the grade and
+    # synthesize system prompts, and no base prompt is a prefix of another.
     system = messages[0]["content"]
-    if system == GRADE_PROMPT:
+    if system.startswith(GRADE_PROMPT):
         return "grade"
-    if system == REWRITE_PROMPT:
+    if system.startswith(REWRITE_PROMPT):
         return "rewrite"
-    if system == SYNTHESIZE_PROMPT:
+    if system.startswith(SYNTHESIZE_PROMPT):
         return "synthesize"
     raise AssertionError("unknown prompt")
 
@@ -81,6 +84,9 @@ class FakeChatModel:
 
 
 def _config(tmp_path):
+    # tmp_path is made a git work tree first: the driver's output-dir gate fails closed outside
+    # one, so the tests must exercise the real check rather than sidestep it.
+    init_git_repo(tmp_path)
     return Config(runs_dir=tmp_path / "runs", cache_dir=tmp_path / "cache")
 
 
@@ -97,6 +103,7 @@ def _questions():
 
 
 def _run(config, model, **kwargs):
+    kwargs.setdefault("condition", Condition.PUBLISHED)
     return run_experiment(
         config,
         collection=_collection(config),
@@ -167,6 +174,7 @@ def test_dry_run_writes_nothing_and_makes_no_calls(tmp_path):
     model = FakeChatModel()
     summary = run_experiment(
         config,
+        condition=Condition.PUBLISHED,
         collection=_collection(config),
         embedder=FakeEmbedder(),
         model=model,
@@ -184,7 +192,9 @@ def test_dry_run_writes_nothing_and_makes_no_calls(tmp_path):
 
 def test_dry_run_respects_limit(tmp_path):
     config = _config(tmp_path)
-    summary = run_experiment(config, questions=_questions(), runs=3, limit=1, dry_run=True)
+    summary = run_experiment(
+        config, condition=Condition.PUBLISHED, questions=_questions(), runs=3, limit=1, dry_run=True
+    )
     assert summary.n_questions == 1
     assert not config.runs_dir.exists()
 

@@ -1,0 +1,25 @@
+{
+  "condition": "published",
+  "model_profile": "gpt-5.6-luna",
+  "model_id": "gpt-5.6-luna",
+  "arm": "free",
+  "node": "synthesize",
+  "required_params": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 42,
+    "reasoning_effort": "none"
+  },
+  "captured_params": {
+    "model": "gpt-5.6-luna",
+    "stream": false,
+    "seed": 42,
+    "top_p": 1.0,
+    "temperature": 0.0,
+    "reasoning_effort": "none"
+  },
+  "system_prompt": "You answer questions using retrieved context. Given the question and the context, provide: answer — the answer to the question; confidence — your confidence (high, medium, low); scope — whether the context covered the question fully, partially, or none; supporting_doc_ids — the doc_ids of the documents you used. Use only the provided context.",
+  "system_prompt_sha256": "63a7dcfe4f4f1bb18bd5a73493777f14aff3e74d018cf4dbdc80e64b0d9a21b6",
+  "sent": false,
+  "note": "Body built via langchain_openai's own request builder. NEVER sent."
+}

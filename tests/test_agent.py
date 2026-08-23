@@ -19,7 +19,7 @@ from src.agent import (
     run_question,
 )
 from src.cache import LLMCache
-from src.config import Config, SchemaVariant
+from src.config import Condition, Config, SchemaVariant
 from src.data import Chunk
 from src.index import build_index, retrieve
 from src.provenance import ProvenanceLogger
@@ -52,12 +52,14 @@ class FakeMessage:
 
 
 def _node_of(messages) -> str:
+    # Prefix match, not equality: the free arm appends FREE_FORMAT_SUFFIX to the grade and
+    # synthesize system prompts, and no base prompt is a prefix of another.
     system = messages[0]["content"]
-    if system == GRADE_PROMPT:
+    if system.startswith(GRADE_PROMPT):
         return "grade"
-    if system == REWRITE_PROMPT:
+    if system.startswith(REWRITE_PROMPT):
         return "rewrite"
-    if system == SYNTHESIZE_PROMPT:
+    if system.startswith(SYNTHESIZE_PROMPT):
         return "synthesize"
     raise AssertionError("unrecognized system prompt")
 
@@ -141,7 +143,7 @@ def test_no_rewrite_path_logs_two_records(tmp_path):
     graph, _ = _build(config, grade_needs_more=False)
     logger = ProvenanceLogger.for_run("run-norew", config)
     result = run_question(
-        graph, "who is X?", _QID, arm="enum", variant=SchemaVariant.ANSWER_V1,
+        graph, "who is X?", _QID, arm="enum", condition=Condition.PUBLISHED, variant=SchemaVariant.ANSWER_V1,
         run_id="run-norew", logger=logger,
     )
     logger.close()
@@ -161,7 +163,7 @@ def test_rewrite_path_logs_three_records_and_changes_query(tmp_path):
     logger = ProvenanceLogger.for_run("run-rew", config)
 
     # Drive the compiled graph directly to inspect final state (current_query).
-    state = initial_state("who is X?", _QID, arm="enum", variant=SchemaVariant.ANSWER_V1, run_id="run-rew")
+    state = initial_state("who is X?", _QID, arm="enum", condition=Condition.PUBLISHED, variant=SchemaVariant.ANSWER_V1, run_id="run-rew")
     final = graph.invoke(state, config={"configurable": {"logger": logger}})
     logger.close()
 
@@ -180,7 +182,7 @@ def test_both_arms_run_through_the_graph(tmp_path):
         graph, _ = _build(config, grade_needs_more=False)
         logger = ProvenanceLogger.for_run(f"run-{arm}", config)
         result = run_question(
-            graph, "who is X?", _QID, arm=arm, variant=SchemaVariant.ANSWER_V1,
+            graph, "who is X?", _QID, arm=arm, condition=Condition.PUBLISHED, variant=SchemaVariant.ANSWER_V1,
             run_id=f"run-{arm}", logger=logger,
         )
         logger.close()
@@ -196,7 +198,7 @@ def test_logged_retrieved_ids_match_the_retrieval(tmp_path):
     graph, collection = _build(config, grade_needs_more=False)
     logger = ProvenanceLogger.for_run("run-link", config)
     run_question(
-        graph, "who is X?", _QID, arm="enum", variant=SchemaVariant.ANSWER_V1,
+        graph, "who is X?", _QID, arm="enum", condition=Condition.PUBLISHED, variant=SchemaVariant.ANSWER_V1,
         run_id="run-link", logger=logger,
     )
     logger.close()

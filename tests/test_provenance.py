@@ -38,6 +38,7 @@ def _record(config: Config, **overrides):
         tokens_in=10,
         tokens_out=5,
         latency_ms=12.5,
+        condition="published",
     )
     fields.update(overrides)
     return make_record(config, **fields)
@@ -109,7 +110,9 @@ def test_logger_round_trips_a_record(tmp_path):
     path = run_manifest_path("run-1", config)
     lines = path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1
-    assert json.loads(lines[0]) == record
+    # Written verbatim, except for the run window the logger stamps onto each record.
+    assert json.loads(lines[0]) == {**record, "run_started_at": logger.run_started_at}
+    assert record["run_started_at"] is None
 
 
 def test_logger_appends_one_line_per_call(tmp_path):

@@ -1,0 +1,325 @@
+{
+  "published_commit": "d6efcab38e9f0fab331ecafa164509a77c181f4e",
+  "published_commit_subject": "Public release: reproducible agentic RAG experiment",
+  "published_commit_date": "2026-07-01T17:32:26+03:00",
+  "recovered_at": "2026-08-22T13:54:04.442230+00:00",
+  "results_json_blob_sha256": "bfd84e730525d1210f0bb37f64de4d5b7d2a3b3c1144a78a6dfb9670909bb95c",
+  "hash_function": {
+    "prompt": {
+      "file": "src/provenance.py",
+      "name": "prompt_sha256",
+      "signature": "prompt_sha256(messages: list[dict[str, Any]]) -> str",
+      "source": "def prompt_sha256(messages: list[dict[str, Any]]) -> str:\n    \"\"\"SHA-256 of the canonical serialization of the messages (key order / whitespace invariant).\"\"\"\n    blob = json.dumps(messages, sort_keys=True, separators=(\",\", \":\"), ensure_ascii=True)\n    return hashlib.sha256(blob.encode(\"utf-8\")).hexdigest()\n",
+      "normalisation": "json.dumps(messages, sort_keys=True, separators=(',',':'), ensure_ascii=True) then .encode('utf-8') then hashlib.sha256().hexdigest(). NO strip(). Newlines are preserved as JSON \\n escapes inside the string value. Non-ASCII escaped to \\uXXXX. Key order and inter-key whitespace invariant; message ORDER and content are significant.",
+      "application_note": "prompt_sha256 is a MESSAGES-level function; the harness never hashes a bare prompt string. To hash a prompt constant we wrap it as [{'role':'system','content':<constant>}] and pass that to the harness function unmodified. This wrapping convention is ours; the digest algorithm is the harness's."
+    },
+    "schema": {
+      "file": "src/schemas.py",
+      "name": "schema_sha256",
+      "signature": "schema_sha256(schema: type[BaseModel]) -> str",
+      "source": "def schema_sha256(schema: type[BaseModel]) -> str:\n    \"\"\"Return the SHA-256 of the canonical strict schema, hashed deterministically.\n\n    Serialized with `sort_keys=True` and compact separators so the digest is identical across\n    runs and machines — this is the `schema_sha256` recorded in the provenance log.\n    \"\"\"\n    canonical = json.dumps(\n        to_openai_strict_schema(schema),\n        sort_keys=True,\n        separators=(\",\", \":\"),\n        ensure_ascii=True,\n    )\n    return hashlib.sha256(canonical.encode(\"utf-8\")).hexdigest()\n",
+      "normalisation": "to_openai_strict_schema(model) -> json.dumps(sort_keys=True, separators=(',',':'), ensure_ascii=True) -> utf-8 -> sha256. Strict form: additionalProperties=false on every object, required=sorted(properties), no defaults."
+    }
+  },
+  "prompts": {
+    "GRADE_PROMPT": {
+      "text": "You assess whether retrieved context can answer a question. Given the question and the retrieved context, judge: scope — whether the context covers the question fully, partially, or not at all (none); confidence — your confidence (high, medium, low) in that judgement; needs_more_context — whether the system should search again with a reformulated query. Base your judgement only on the provided context.",
+      "sha256": "c73170f00af8423ad1828da5858796d3da1419b0221f159ff7160a073c9fe805"
+    },
+    "REWRITE_PROMPT": {
+      "text": "You reformulate search queries. Given the question and the context retrieved so far, write a single improved search query that would retrieve better context to answer the question. Provide only the reformulated query.",
+      "sha256": "d92149e55bce4a3eee160688bc3ceb098ebf510d7f2df0f617a4f6422cd0e097"
+    },
+    "SYNTHESIZE_PROMPT": {
+      "text": "You answer questions using retrieved context. Given the question and the context, provide: answer — the answer to the question; confidence — your confidence (high, medium, low); scope — whether the context covered the question fully, partially, or none; supporting_doc_ids — the doc_ids of the documents you used. Use only the provided context.",
+      "sha256": "63a7dcfe4f4f1bb18bd5a73493777f14aff3e74d018cf4dbdc80e64b0d9a21b6"
+    }
+  },
+  "composed_prompts": {
+    "enum|grade": {
+      "system_text": "You assess whether retrieved context can answer a question. Given the question and the retrieved context, judge: scope — whether the context covers the question fully, partially, or not at all (none); confidence — your confidence (high, medium, low) in that judgement; needs_more_context — whether the system should search again with a reformulated query. Base your judgement only on the provided context.",
+      "system_sha256": "c73170f00af8423ad1828da5858796d3da1419b0221f159ff7160a073c9fe805",
+      "source_constant": "GRADE_PROMPT",
+      "identical_across_arms": true,
+      "user_template": "Question: {question}\n\nRetrieved context:\n{context}"
+    },
+    "enum|rewrite": {
+      "system_text": "You reformulate search queries. Given the question and the context retrieved so far, write a single improved search query that would retrieve better context to answer the question. Provide only the reformulated query.",
+      "system_sha256": "d92149e55bce4a3eee160688bc3ceb098ebf510d7f2df0f617a4f6422cd0e097",
+      "source_constant": "REWRITE_PROMPT",
+      "identical_across_arms": true,
+      "user_template": "Question: {question}\n\nContext retrieved so far:\n{context}"
+    },
+    "enum|synthesize": {
+      "system_text": "You answer questions using retrieved context. Given the question and the context, provide: answer — the answer to the question; confidence — your confidence (high, medium, low); scope — whether the context covered the question fully, partially, or none; supporting_doc_ids — the doc_ids of the documents you used. Use only the provided context.",
+      "system_sha256": "63a7dcfe4f4f1bb18bd5a73493777f14aff3e74d018cf4dbdc80e64b0d9a21b6",
+      "source_constant": "SYNTHESIZE_PROMPT",
+      "identical_across_arms": true,
+      "user_template": "Question: {question}\n\nContext:\n{context}"
+    },
+    "free|grade": {
+      "system_text": "You assess whether retrieved context can answer a question. Given the question and the retrieved context, judge: scope — whether the context covers the question fully, partially, or not at all (none); confidence — your confidence (high, medium, low) in that judgement; needs_more_context — whether the system should search again with a reformulated query. Base your judgement only on the provided context.",
+      "system_sha256": "c73170f00af8423ad1828da5858796d3da1419b0221f159ff7160a073c9fe805",
+      "source_constant": "GRADE_PROMPT",
+      "identical_across_arms": true,
+      "user_template": "Question: {question}\n\nRetrieved context:\n{context}"
+    },
+    "free|rewrite": {
+      "system_text": "You reformulate search queries. Given the question and the context retrieved so far, write a single improved search query that would retrieve better context to answer the question. Provide only the reformulated query.",
+      "system_sha256": "d92149e55bce4a3eee160688bc3ceb098ebf510d7f2df0f617a4f6422cd0e097",
+      "source_constant": "REWRITE_PROMPT",
+      "identical_across_arms": true,
+      "user_template": "Question: {question}\n\nContext retrieved so far:\n{context}"
+    },
+    "free|synthesize": {
+      "system_text": "You answer questions using retrieved context. Given the question and the context, provide: answer — the answer to the question; confidence — your confidence (high, medium, low); scope — whether the context covered the question fully, partially, or none; supporting_doc_ids — the doc_ids of the documents you used. Use only the provided context.",
+      "system_sha256": "63a7dcfe4f4f1bb18bd5a73493777f14aff3e74d018cf4dbdc80e64b0d9a21b6",
+      "source_constant": "SYNTHESIZE_PROMPT",
+      "identical_across_arms": true,
+      "user_template": "Question: {question}\n\nContext:\n{context}"
+    }
+  },
+  "composed_prompts_note": "At d6efcab BOTH arms send the identical system prompt for a given node; no free-format suffix constant exists anywhere in git history. The full messages list also carries a user message built from the runtime question + retrieved context, which is NOT recoverable without the lost provenance log - so the per-call prompt_sha256 values recorded in the original runs CANNOT be reconstructed. Only the system half is recovered here.",
+  "schemas": {
+    "enum_arm": {
+      "grade": {
+        "model": "ContextGrade",
+        "strict_schema": {
+          "$defs": {
+            "AnswerScope": {
+              "description": "How much of the question the answer covers.",
+              "enum": [
+                "full",
+                "partial",
+                "none"
+              ],
+              "title": "AnswerScope",
+              "type": "string"
+            },
+            "ConfidenceLevel": {
+              "description": "How confident the step is in its answer.",
+              "enum": [
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "ConfidenceLevel",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Grade-step judgement on the retrieved context (reuses the shared enums).\n\n`scope` = how well the retrieved context covers the question; `confidence` = confidence in\nthat judgement; `needs_more_context` = whether to rewrite the query and retrieve again.",
+          "properties": {
+            "scope": {
+              "$ref": "#/$defs/AnswerScope"
+            },
+            "confidence": {
+              "$ref": "#/$defs/ConfidenceLevel"
+            },
+            "needs_more_context": {
+              "title": "Needs More Context",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "confidence",
+            "needs_more_context",
+            "scope"
+          ],
+          "title": "ContextGrade",
+          "type": "object"
+        },
+        "sha256": "24aff0999631aaef9fe9ff818d6d618f58e2ac25b5dfe7b1d922c93fe5892587"
+      },
+      "rewrite": {
+        "model": "RewriteQuery",
+        "strict_schema": {
+          "additionalProperties": false,
+          "description": "Rewrite-step output: the reformulated search query.",
+          "properties": {
+            "query": {
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "title": "RewriteQuery",
+          "type": "object"
+        },
+        "sha256": "3eef9a8d2a64fc77007f76a59c1d1a1d736005ba909b685988295ac54786a2ea"
+      },
+      "synthesize": {
+        "model": "AnswerV1",
+        "strict_schema": {
+          "$defs": {
+            "AnswerScope": {
+              "description": "How much of the question the answer covers.",
+              "enum": [
+                "full",
+                "partial",
+                "none"
+              ],
+              "title": "AnswerScope",
+              "type": "string"
+            },
+            "ConfidenceLevel": {
+              "description": "How confident the step is in its answer.",
+              "enum": [
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "ConfidenceLevel",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Headline treatment-arm response: answer + enum judgements + supporting doc ids.\n\n`extra=\"forbid\"` mirrors OpenAI strict mode's `additionalProperties: false` and makes the\nmodel reject any field the LLM hallucinates beyond the schema.",
+          "properties": {
+            "answer": {
+              "title": "Answer",
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/ConfidenceLevel"
+            },
+            "scope": {
+              "$ref": "#/$defs/AnswerScope"
+            },
+            "supporting_doc_ids": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Supporting Doc Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "answer",
+            "confidence",
+            "scope",
+            "supporting_doc_ids"
+          ],
+          "title": "AnswerV1",
+          "type": "object"
+        },
+        "sha256": "c1c4015f7d8499bc21494dfa1595be7130ebb7d02c3e7bf81cd5d4218012f48a"
+      }
+    },
+    "free_arm": {
+      "schema": null,
+      "schema_sha256": null,
+      "note": "free arm sends no schema; provenance logs schema_sha256=null"
+    },
+    "enum_domains": {
+      "AnswerScope": [
+        "full",
+        "partial",
+        "none"
+      ],
+      "ConfidenceLevel": [
+        "high",
+        "medium",
+        "low"
+      ]
+    }
+  },
+  "run_config": {
+    "llm_model": "gpt-4o-mini-2024-07-18",
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "llm_seed": 42,
+    "numpy_seed": 42,
+    "reasoning_params": null,
+    "reasoning_params_note": "none present at d6efcab; make_llm sets only model/temperature/top_p/seed",
+    "embedding_model": "text-embedding-3-small",
+    "embedding_dimensions": 1536,
+    "chunk_size": 512,
+    "chunk_overlap": 64,
+    "splitter": "langchain_text_splitters.RecursiveCharacterTextSplitter.from_tiktoken_encoder(encoding_name='cl100k_base', chunk_size=512, chunk_overlap=64)",
+    "top_k": 4,
+    "max_retrieval_rounds": 2,
+    "tie_break_rule": "sort by (similarity DESC, doc_id ASC); similarity = 1.0 - chroma_cosine_distance",
+    "retrieval_scoping": "where={'question_id': ...}; never crosses question boundaries",
+    "vector_store": "chromadb PersistentClient, collection 'hotpotqa_distractor', metadata {'hnsw:space':'cosine'}",
+    "record_id": "f'{question_id}:{doc_id}'",
+    "llm_cache_enabled": false,
+    "embedding_cache_enabled": true,
+    "n_questions": 150,
+    "k_runs": 5,
+    "arms": [
+      "free",
+      "enum"
+    ],
+    "schema_variant": "answer_v1",
+    "execution": "strictly sequential; no threads/processes/async",
+    "rewrite_cap": "at most 1; _route_after_grade requires rewrite_count == 0, rewrite_node sets rewrite_count=1, and _route_after_retrieve sends the post-rewrite retrieval straight to synthesize (never grades twice)"
+  },
+  "dataset_config": {
+    "dataset_name": "hotpotqa/hotpot_qa",
+    "dataset_config": "distractor",
+    "dataset_split": "validation",
+    "sampling_seed": 42,
+    "sampling_seed_source": "Config.numpy_seed",
+    "question_id_selection": "sample_question_ids(): unique_ids = sorted(set(all_question_ids)); rng = numpy.random.default_rng(42); rng.choice(np.array(unique_ids, dtype=object), size=150, replace=False); result sorted(). Isolated RNG - no global numpy state mutated.",
+    "text_normalisation": "NFC unicode, whitespace runs collapsed to single space, stripped",
+    "doc_id": "sha256(normalized_text.encode('utf-8')).hexdigest()  [src/data.py compute_doc_id]",
+    "resolved_question_ids": null,
+    "resolved_question_ids_note": "NOT recovered: requires downloading the HotpotQA split and executing the sampler. No API/network calls were made, and the id list is not stored anywhere in git history."
+  },
+  "parser_source": {
+    "file": "src/llm.py",
+    "function": "parse_free_response",
+    "source": "def parse_free_response(node: NodeName, text: str) -> dict[str, Any]:\n    \"\"\"Deterministically recover the structured fields a node would emit, from free-form text.\n\n    Returns the same field set as the corresponding schema, with None where a value is not\n    confidently present (never a guessed default). No randomness, no model calls.\n    \"\"\"\n    text = text or \"\"\n    fields = _labelled_fields(text)\n    if node == \"grade\":\n        return {\n            \"scope\": _match_synonym(fields.get(\"scope\"), _SCOPE_MAP),\n            \"confidence\": _match_synonym(fields.get(\"confidence\"), _CONFIDENCE_MAP),\n            \"needs_more_context\": _match_synonym(fields.get(\"needs_more_context\"), _NEEDS_MORE_MAP),\n        }\n    if node == \"rewrite\":\n        query = fields.get(\"query\")\n        return {\"query\": query if query else text.strip()}\n    if node == \"synthesize\":\n        answer = fields.get(\"answer\")  # isolated to the \"answer\" segment, not the whole blob\n        return {\n            \"answer\": answer if answer else text.strip(),\n            \"confidence\": _match_synonym(fields.get(\"confidence\"), _CONFIDENCE_MAP),\n            \"scope\": _match_synonym(fields.get(\"scope\"), _SCOPE_MAP),\n            \"supporting_doc_ids\": _extract_doc_ids(text),\n        }\n    raise ValueError(f\"Unknown agent node {node!r}\")\n",
+    "helpers": {
+      "_labelled_fields": "def _labelled_fields(text: str) -> dict[str, str]:\n    \"\"\"Split text into `field -> value` segments, each value running up to the next label.\n\n    A field's value is the text between its delimiter and the start of the next recognized label\n    (or end of text). The first occurrence of each field wins.\n    \"\"\"\n    matches = list(_LABEL_RE.finditer(text))\n    fields: dict[str, str] = {}\n    for i, match in enumerate(matches):\n        field = match.lastgroup  # the matched named label group\n        value_end = matches[i + 1].start() if i + 1 < len(matches) else len(text)\n        if field is not None:\n            fields.setdefault(field, text[match.end() : value_end].strip())\n    return fields\n",
+      "_match_synonym": "def _match_synonym(value: str | None, mapping: dict[str, Any]) -> Any | None:\n    \"\"\"Map a labelled value to its pre-registered enum/bool, longest key first; else None.\"\"\"\n    if not value:\n        return None\n    lowered = value.lower()\n    for key in sorted(mapping, key=len, reverse=True):\n        if re.search(rf\"\\b{re.escape(key)}\\b\", lowered):\n            return mapping[key]\n    return None\n",
+      "_extract_doc_ids": "def _extract_doc_ids(text: str) -> list[str]:\n    \"\"\"Extract any 64-hex doc_id tokens, lowercased and de-duplicated in order of appearance.\"\"\"\n    seen: dict[str, None] = {}\n    for token in _DOC_ID_RE.findall(text):\n        seen.setdefault(token.lower(), None)\n    return list(seen)\n"
+    },
+    "recognised_field_labels": {
+      "answer": "answer",
+      "confidence": "confidence",
+      "scope": "scope",
+      "needs_more_context": "needs[\\s_]*more[\\s_]*context",
+      "supporting_doc_ids": "supporting[\\s_]*doc[\\s_]*ids",
+      "query": "(?:rewritten\\s+)?query"
+    },
+    "delimiters": "[:—–-]",
+    "delimiters_note": "':', '-', em-dash U+2014, en-dash U+2013",
+    "scope_synonyms": {
+      "full": "full",
+      "fully": "full",
+      "completely": "full",
+      "partial": "partial",
+      "partially": "partial",
+      "partly": "partial",
+      "none": "none",
+      "not at all": "none",
+      "no": "none",
+      "doesn't cover": "none",
+      "does not cover": "none"
+    },
+    "confidence_synonyms": {
+      "high": "high",
+      "very confident": "high",
+      "certain": "high",
+      "confident": "high",
+      "medium": "medium",
+      "moderate": "medium",
+      "somewhat": "medium",
+      "low": "low",
+      "unsure": "low",
+      "uncertain": "low",
+      "not confident": "low"
+    },
+    "needs_more_synonyms": {
+      "yes": true,
+      "true": true,
+      "no": false,
+      "false": false
+    },
+    "doc_id_regex": "\\b[0-9a-f]{64}\\b  (re.IGNORECASE)"
+  }
+}

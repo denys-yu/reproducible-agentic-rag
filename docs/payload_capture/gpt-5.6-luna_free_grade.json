@@ -1,0 +1,25 @@
+{
+  "condition": "published",
+  "model_profile": "gpt-5.6-luna",
+  "model_id": "gpt-5.6-luna",
+  "arm": "free",
+  "node": "grade",
+  "required_params": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 42,
+    "reasoning_effort": "none"
+  },
+  "captured_params": {
+    "model": "gpt-5.6-luna",
+    "stream": false,
+    "seed": 42,
+    "top_p": 1.0,
+    "temperature": 0.0,
+    "reasoning_effort": "none"
+  },
+  "system_prompt": "You assess whether retrieved context can answer a question. Given the question and the retrieved context, judge: scope — whether the context covers the question fully, partially, or not at all (none); confidence — your confidence (high, medium, low) in that judgement; needs_more_context — whether the system should search again with a reformulated query. Base your judgement only on the provided context.",
+  "system_prompt_sha256": "c73170f00af8423ad1828da5858796d3da1419b0221f159ff7160a073c9fe805",
+  "sent": false,
+  "note": "Body built via langchain_openai's own request builder. NEVER sent."
+}

@@ -2,3 +2,5 @@
 # hashed byte-for-byte, so git must never rewrite their line endings on checkout or commit.
 runs/** -text
 pins/** -text
+
+docs/payload_capture/** -text

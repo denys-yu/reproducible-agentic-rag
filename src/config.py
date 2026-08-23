@@ -18,10 +18,12 @@ from __future__ import annotations
 import argparse
 import enum
 import json
+import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,8 +43,107 @@ class SchemaVariant(str, enum.Enum):
     ANSWER_V1 = "answer_v1"  # answer + confidence + scope + supporting_doc_ids
 
 
+class Condition(str, enum.Enum):
+    """Prompt-wiring condition. See `src.prompts` for the composition rules.
+
+    Declared here rather than in `src.prompts` so that `prompts` can import from `config` without
+    a cycle — the condition is a configuration fact, and the prompt module is its consumer.
+    """
+
+    PUBLISHED = "published"  # no format suffix anywhere; both arms byte-identical (d6efcab)
+    ABLATION = "ablation"  # free-arm GRADE gains the suffix; SYNTHESIZE never does
+
+
 # Fields that must never be exposed on the CLI or printed in cleartext.
 _SECRET_FIELDS: frozenset[str] = frozenset({"openai_api_key"})
+
+
+# --- model profiles ---------------------------------------------------------------------------
+
+
+class ModelName(str, enum.Enum):
+    """Selectable model profile (`--model`). One stratum of the experiment per profile."""
+
+    GPT_4O_MINI = "gpt-4o-mini"
+    GPT_5_6_LUNA = "gpt-5.6-luna"
+
+
+@dataclass(frozen=True)
+class ModelProfile:
+    """Everything that differs between model strata — and nothing else.
+
+    The experiment's whole claim rests on exactly ONE thing varying across strata: the model.
+    A profile therefore carries only the model identity and the request-shape facts forced by
+    that model's API (which sampling params it accepts, which extra params it *requires*).
+    Prompts, schemas, the graph, retrieval and every metric are profile-independent.
+
+    `supports` lists the sampling params that may be sent. `extra_params` are non-sampling
+    params the API requires for the pinned decoding to be accepted at all — they are mandatory,
+    not optional: `llm.make_llm` verifies each one survives into the outbound request and aborts
+    the run if it does not.
+    """
+
+    name: str
+    model_id: str
+    supports: frozenset[str]
+    extra_params: dict[str, Any] = field(default_factory=dict)
+    dated_snapshot: bool = True
+
+
+MODEL_PROFILES: dict[ModelName, ModelProfile] = {
+    # Stratum 1 (published). Dated snapshot; plain sampling params, no extras.
+    ModelName.GPT_4O_MINI: ModelProfile(
+        name=ModelName.GPT_4O_MINI.value,
+        model_id="gpt-4o-mini-2024-07-18",
+        supports=frozenset({"temperature", "top_p", "seed"}),
+        extra_params={},
+        dated_snapshot=True,
+    ),
+    # Stratum 2 (pilot). No dated snapshot is published for this model, so the alias is pinned
+    # as-is and `system_fingerprint` comes back null — the run window in the provenance log is
+    # the only handle on which server-side build answered.
+    #
+    # `reasoning_effort="none"` is NOT a tuning choice: with any other effort the API rejects
+    # temperature=0 outright ("Unsupported value: 'temperature' does not support 0 with this
+    # model. Only the default (1) value is supported."), which would silently move this stratum
+    # off the pinned decoding params the first stratum used.
+    ModelName.GPT_5_6_LUNA: ModelProfile(
+        name=ModelName.GPT_5_6_LUNA.value,
+        model_id="gpt-5.6-luna",
+        supports=frozenset({"temperature", "top_p", "seed"}),
+        extra_params={"reasoning_effort": "none"},
+        dated_snapshot=False,
+    ),
+}
+
+
+def get_model_profile(name: ModelName | str) -> ModelProfile:
+    """Return the profile for a model name; fail loud on an unregistered one."""
+    key = name if isinstance(name, ModelName) else ModelName(name)
+    return MODEL_PROFILES[key]
+
+
+# --- dataset pin ------------------------------------------------------------------------------
+
+# The HuggingFace cache layout for the pinned HotpotQA build. The revision hash is part of the
+# path, so this resolves to one specific dataset build rather than "whatever is cached".
+_HF_DATASET_REVISION = "1908d6afbbead072334abe2965f91bd2709910ab"
+_HF_DATASET_RELPATH = (
+    f"datasets/hotpotqa___hotpot_qa/distractor/0.0.0/{_HF_DATASET_REVISION}/"
+    "hotpot_qa-validation.arrow"
+)
+
+
+def _default_dataset_file() -> Path:
+    """Resolve the pinned validation shard inside the HuggingFace cache.
+
+    Honours `HF_HOME` when set, else the platform default `~/.cache/huggingface`. Only the
+    *location* is machine-dependent; the shard's identity is pinned by `dataset_file_sha256`,
+    which is what the preflight actually checks.
+    """
+    hf_home = os.environ.get("HF_HOME")
+    root = Path(hf_home) if hf_home else Path.home() / ".cache" / "huggingface"
+    return root / _HF_DATASET_RELPATH
 
 
 class Config(BaseSettings):
@@ -62,6 +163,9 @@ class Config(BaseSettings):
     )
 
     # ---- LLM / embeddings (pinned snapshots only) ----
+    # `model` selects the profile (the stratum); `llm_model` is DERIVED from it and must not be
+    # set independently — see `_resolve_model_id`.
+    model: ModelName = ModelName.GPT_4O_MINI
     llm_model: str = "gpt-4o-mini-2024-07-18"
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
@@ -80,10 +184,24 @@ class Config(BaseSettings):
     arm: Arm = Arm.FREE
     schema_variant: SchemaVariant = SchemaVariant.ANSWER_V1
 
+    # ---- Prompt-wiring condition ----
+    # Intentionally UNSET by default. `None` means "no condition stated", and every prompt
+    # composition path requires an explicit condition (`prompts.compose_system_prompt` has no
+    # default for it), so an unstated condition fails loud instead of silently picking one.
+    condition: Condition | None = None
+
     # ---- Dataset (HotpotQA distractor dev set) ----
     dataset_name: str = "hotpotqa/hotpot_qa"
     dataset_config: str = "distractor"
     dataset_split: str = "validation"
+
+    # ---- Dataset pinning (identity of the exact shard this run reads) ----
+    # The published series was recovered without any record of which dataset build produced it
+    # (see docs/published_series_recovery_report.md §6). Pinning the shard by content hash closes
+    # that gap: `preflight.assert_dataset_pin` refuses to run if the bytes on disk differ.
+    dataset_file: Path = Field(default_factory=lambda: _default_dataset_file())
+    dataset_file_sha256: str = "ee53452aadd12dd3e4fa19655c91e01b5320afaf97fd5b5167296a76bc14665c"
+    dataset_record_count: int = 7405
 
     # ---- Deterministic chunking ----
     chunk_size: int = 512
@@ -101,14 +219,52 @@ class Config(BaseSettings):
     bert_score_model: str = "microsoft/deberta-xlarge-mnli"
     bert_score_device: str = "cpu"
 
-    # ---- Filesystem paths (git-ignored at runtime) ----
+    # ---- Filesystem paths ----
+    # `runs_dir` defaults to `provenance/`, which is NOT git-ignored — see
+    # docs/module1_condition_report.md §7. The legacy `runs/` tree is git-ignored and is what
+    # nearly cost us the published series' per-call log; nothing there is moved or deleted, but
+    # new runs no longer write into an ignored directory by default.
     data_dir: Path = Path("data")
-    runs_dir: Path = Path("runs")
+    runs_dir: Path = Path("provenance")
     chroma_dir: Path = Path("chroma")
     cache_dir: Path = Path(".cache")
 
     # ---- Secrets (loaded from env/.env, never logged or printed) ----
     openai_api_key: SecretStr | None = Field(default=None, validation_alias="OPENAI_API_KEY")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _resolve_model_id(cls, values: Any) -> Any:
+        """Derive `llm_model` from the selected profile; reject a conflicting explicit override.
+
+        Keeping the model id in exactly one place (the profile) is what makes `--model` a true
+        one-variable switch. An explicit `llm_model` that agrees with the profile is tolerated
+        (env files in the wild pin it); one that disagrees is a silent stratum mix-up, so it
+        fails loud.
+        """
+        if not isinstance(values, dict):
+            return values
+        profile = get_model_profile(values.get("model") or ModelName.GPT_4O_MINI)
+        declared = values.get("llm_model")
+        if declared is not None and declared != profile.model_id:
+            message = (
+                f"llm_model={declared!r} conflicts with model profile {profile.name!r} "
+                f"(model_id={profile.model_id!r}). Select the model with `model` / --model only."
+            )
+            # Pydantic renders the validator's *input* alongside the message, and that input is
+            # this very dict — which carries the API key straight from the environment. Mask it
+            # in place first: the same object is what the rendered error will read.
+            for secret in _SECRET_FIELDS | {"OPENAI_API_KEY"}:
+                if secret in values:
+                    values[secret] = "<redacted>"
+            raise ValueError(message)
+        values["llm_model"] = profile.model_id
+        return values
+
+    @property
+    def model_profile(self) -> ModelProfile:
+        """The resolved profile for the selected model."""
+        return get_model_profile(self.model)
 
 
 def _add_field_argument(parser: argparse.ArgumentParser, name: str, annotation: Any) -> None:

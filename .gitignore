@@ -1,10 +1,11 @@
 # Secrets
 .env
 
-# Runtime artifacts (git-ignored except small fixtures)
+# Runtime artifacts. `runs/` and `results/` are deliberately NOT ignored: they carry the
+# per-call provenance manifests, which are the experiment's primary evidence. Only rebuildable
+# caches and the vector store stay ignored.
 data/
 chroma/
-runs/
 .cache/
 
 # Python
