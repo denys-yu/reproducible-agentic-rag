@@ -79,3 +79,43 @@ Corpus: chroma collection hotpotqa_distractor, 1500 documents,
 digest 5c4a72d6cc2c56b03d9a4426d944ab06fd671ac40d14f2049daf60ff284ae7b3,
 text-embedding-3-small, top_k 4.
 The sampler is not called again. The published series is not re-run.
+
+## 6. Amendment, 2026-08-24, after the smoke run and before the second series
+
+The smoke run revealed that agreement metrics were computed over records whose output failed
+to parse. Two failed parses yield None on both sides and were scored as agreement. A model
+that always fails would appear perfectly stable, which inverts the quantity this paper is
+about. The following conventions are fixed now, before the second series is executed.
+
+6.1 None is not a category. For every agreement endpoint, a pair in which either side is None
+is excluded from kappa, EMA and TAR.
+
+6.2 Coverage, the number of pairs actually scored over the number available, is reported next
+to every agreement figure. A figure with coverage below 0.5 is marked in every table and is
+not used to support a claim about stability.
+
+6.3 unparsed_rate becomes a first-class descriptive endpoint, reported per model, condition,
+arm and node. It is not part of the corrected family.
+
+6.4 Route on missing signal. When needs_more_context is None because the grade output did not
+parse, the route actually taken is recorded and reported as route_on_missing_signal. Smoke
+evidence: gpt-5.6-luna, published prompts, free arm, 23 of 30 grade calls unparsed and zero
+rewrites of 30, against 7 of 30 in the enum arm.
+
+6.5 Forecast F3 is provisionally confirmed on smoke data: luna free arm, published prompts,
+grade node, unparsed rate 0.767 against a registered threshold of 0.5. The same cell under
+ablation parsed 30 of 30, which isolates the effect to the absence of a declared format
+rather than to the model. Confirmation on the full series is still required.
+
+6.6 Composite reporting. Every agreement figure is accompanied by usable_agreement =
+coverage x EMA, the probability that a question yields a scorable pair that also agrees.
+Applied to EMA and TAR only, not to kappa, which is chance-corrected and does not compose.
+Rationale: under 6.1 an arm that fails to parse most of the time can show EMA 1.000 on the
+few pairs it does produce, which reads as higher stability than an arm that answers every
+time. Smoke evidence: luna, published, free, grade shows EMA 1.000 at coverage 0.133 against
+EMA 0.933 at coverage 1.000 in the enum arm.
+
+6.7 Forecast F5. The luna free arm under published prompts will remain below 0.5 coverage on
+the full series. At a per-call parse rate near 0.233 and five runs, a question yields at least
+one scorable pair with probability near 0.33. Claims about that cell will therefore rest on
+unparsed_rate, usable_agreement and routing, not on kappa. Registered before execution.

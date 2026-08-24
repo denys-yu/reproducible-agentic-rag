@@ -156,13 +156,18 @@ def _labelled_line_re() -> re.Pattern[str]:
 
     Whitespace after the delimiter is REQUIRED. `-` is one of the parser's delimiters, so without
     it any hyphenated first word ("Multi-word answer") would read as a label named `Multi`.
+
+    The emphasis marker may close on EITHER side of the delimiter. Models write both
+    `**Scope**: full` and `**Scope:** full`, putting the colon inside the bold span in the second
+    case; gpt-5.6-luna used the latter form throughout its free-arm synthesize output. Accepting
+    only the first form reported 18 of 30 such records as `prose` when they were plainly labelled.
     """
     from src.llm import _DELIMITERS
 
     return re.compile(
         r"^[ \t]*(?:[-*+>][ \t]*)*(?:\*\*|__|`)?[ \t]*"
         r"[A-Za-z_][A-Za-z0-9 _]{0,40}"
-        rf"(?:\*\*|__|`)?[ \t]*{_DELIMITERS}[ \t]",
+        rf"(?:\*\*|__|`)?[ \t]*{_DELIMITERS}(?:\*\*|__|`)?[ \t]",
         re.MULTILINE,
     )
 
@@ -397,7 +402,7 @@ _MANIFEST_LIBS = (
     "openai",
 )
 
-#: Filename of the working-tree diff dumped beside a manifest when the tree is dirty.
+#: Filename of the working-tree diff dumped beside a manifest when tracked files differ.
 DIRTY_DIFF_FILENAME = "git_diff_HEAD.patch"
 
 
@@ -467,8 +472,16 @@ def build_run_manifest(
 ) -> dict[str, Any]:
     """Assemble the run-level manifest. Pure description — it never mutates anything it reads."""
     head = _git_output(["rev-parse", "HEAD"])
-    status = _git_output(["status", "--porcelain"])
-    dirty = bool((status or "").strip())
+    # Two separate counts, never one `dirty` flag. The smoke run stamped dirty=True on a tree with
+    # ZERO tracked modifications — the only untracked files were two report artifacts — and then
+    # dumped an empty patch, because `git diff HEAD` does not see untracked files. A flag that says
+    # "the code may differ from the commit" while the code provably does not is worse than no flag.
+    # `tracked_modifications` is the one that bears on reproducibility; `untracked_files` is
+    # recorded because it is context, not because it impeaches the commit.
+    tracked = _git_output(["status", "--porcelain", "--untracked-files=no"]) or ""
+    everything = _git_output(["status", "--porcelain"]) or ""
+    tracked_modifications = len([ln for ln in tracked.splitlines() if ln.strip()])
+    untracked_files = len([ln for ln in everything.splitlines() if ln.startswith("??")])
 
     collection_name: str | None = None
     document_count: int | None = None
@@ -482,9 +495,11 @@ def build_run_manifest(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "git": {
             "commit": (head or "unknown").strip(),
-            "dirty": dirty,
-            # Named unconditionally so a reader never has to infer whether a diff exists.
-            "diff_file": DIRTY_DIFF_FILENAME if dirty else None,
+            "tracked_modifications": tracked_modifications,
+            "untracked_files": untracked_files,
+            # A diff is dumped only for TRACKED modifications — the only thing `git diff HEAD`
+            # can actually capture. Named unconditionally so a reader never has to infer it.
+            "diff_file": DIRTY_DIFF_FILENAME if tracked_modifications else None,
         },
         "condition": condition,
         "arms": list(arms),
@@ -508,20 +523,21 @@ def build_run_manifest(
 
 
 def write_run_manifest(manifest: dict[str, Any], run_dir: Path) -> Path:
-    """Write the run manifest, dumping `git diff HEAD` alongside it when the tree is dirty.
+    """Write the run manifest, dumping `git diff HEAD` when TRACKED files are modified.
 
-    A dirty tree means the commit hash alone does not identify the code that ran, so the diff is
-    captured as part of the run's evidence rather than left to be reconstructed later — by which
-    time the working tree will have moved on.
+    Modified tracked files mean the commit hash alone does not identify the code that ran, so the
+    diff is captured as part of the run's evidence rather than left to be reconstructed later — by
+    which time the working tree will have moved on. Untracked files do not trigger a dump: they are
+    invisible to `git diff HEAD`, so dumping for them produced an empty patch and a false alarm.
     """
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    if manifest.get("git", {}).get("dirty"):
+    if manifest.get("git", {}).get("tracked_modifications"):
         diff = _git_output(["diff", "HEAD"])
         if diff is None:
             raise RuntimeError(
-                "Working tree is dirty but `git diff HEAD` could not be captured; refusing to "
+                "Tracked files are modified but `git diff HEAD` could not be captured; refusing "
                 "write a manifest that claims a diff file it does not have."
             )
         (run_dir / DIRTY_DIFF_FILENAME).write_text(diff, encoding="utf-8", newline="\n")

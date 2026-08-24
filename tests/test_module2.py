@@ -123,6 +123,19 @@ def test_labeled_lines_accepts_every_parser_delimiter():
         assert classify_output_shape(f"answer{delimiter} 42") == "labeled_lines", delimiter
 
 
+def test_emphasis_may_close_after_the_delimiter():
+    """`**Answer:** value` is labelled, not prose — the colon sits inside the bold span.
+
+    gpt-5.6-luna wrote its whole free-arm synthesize output this way. Accepting only
+    `**Answer**: value` mis-reported those records as `prose`.
+    """
+    assert classify_output_shape("**Answer:** The Maine Legislature convenes in Augusta.") == "labeled_lines"
+    assert classify_output_shape("**Confidence:** High") == "labeled_lines"
+    assert classify_output_shape("__Scope:__ fully") == "labeled_lines"
+    # The pre-existing form must keep working.
+    assert classify_output_shape("- **Scope**: full") == "labeled_lines"
+
+
 def test_hyphenated_first_word_is_not_a_false_positive():
     """`-` is a parser delimiter, so the required whitespace is what keeps prose out."""
     assert classify_output_shape("Multi-word answers are common in this corpus.") == "prose"
@@ -488,7 +501,9 @@ def _manifest(config, **overrides):
 
 def test_run_manifest_carries_every_required_field(tmp_path):
     manifest = _manifest(Config(runs_dir=tmp_path))
-    assert set(manifest["git"]) == {"commit", "dirty", "diff_file"}
+    assert set(manifest["git"]) == {
+        "commit", "tracked_modifications", "untracked_files", "diff_file"
+    }
     assert manifest["condition"] == "published"
     assert manifest["arms"] == ["free", "enum"]
     assert manifest["models"] == ["gpt-4o-mini-2024-07-18"]
@@ -506,17 +521,31 @@ def test_run_manifest_carries_every_required_field(tmp_path):
         assert library in manifest["lib_versions"], library
 
 
-def test_dirty_tree_dumps_the_diff_beside_the_manifest(tmp_path):
+def test_tracked_modifications_drive_the_diff_dump(tmp_path):
+    """The diff is dumped for TRACKED modifications only — untracked files must not trigger it.
+
+    The smoke run stamped dirty=True on a tree whose only non-clean entries were two untracked
+    report files, then wrote an empty patch, because `git diff HEAD` cannot see untracked files.
+    Splitting the flag is what makes the manifest's claim checkable.
+    """
     manifest = _manifest(Config(runs_dir=tmp_path))
     run_dir = tmp_path / "free_run1"
     path = write_run_manifest(manifest, run_dir)
     written = json.loads(path.read_text(encoding="utf-8"))
-    assert written["git"]["dirty"] is manifest["git"]["dirty"]
-    if manifest["git"]["dirty"]:
-        assert written["git"]["diff_file"] == "git_diff_HEAD.patch"
+
+    git = written["git"]
+    assert "dirty" not in git  # the uninformative flag is gone
+    assert isinstance(git["tracked_modifications"], int)
+    assert isinstance(git["untracked_files"], int)
+    assert git["tracked_modifications"] == manifest["git"]["tracked_modifications"]
+
+    if git["tracked_modifications"]:
+        assert git["diff_file"] == "git_diff_HEAD.patch"
         assert (run_dir / "git_diff_HEAD.patch").exists()
     else:
-        assert written["git"]["diff_file"] is None
+        # Untracked files alone must NOT produce a diff file, however many there are.
+        assert git["diff_file"] is None
+        assert not (run_dir / "git_diff_HEAD.patch").exists()
 
 
 def test_run_manifest_is_json_serialisable_and_lf_on_disk(tmp_path):

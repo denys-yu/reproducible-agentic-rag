@@ -229,7 +229,8 @@ def run_experiment(
             print(
                 f"[{run_id}] run manifest: {manifest_path} "
                 f"(commit {manifest['git']['commit'][:12]}"
-                f"{', DIRTY — diff dumped' if manifest['git']['dirty'] else ''}, "
+                f"{f", {manifest['git']['tracked_modifications']} tracked mods — diff dumped" if manifest['git']['tracked_modifications'] else ''}"
+                f"{f", {manifest['git']['untracked_files']} untracked" if manifest['git']['untracked_files'] else ''}, "
                 f"corpus {manifest['corpus']['document_count']} docs)"
             )
 
