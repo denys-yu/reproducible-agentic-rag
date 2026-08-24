@@ -1,0 +1,134 @@
+PUBLISHED SERIES RECOMPUTED — prereg section 6 — 2026-08-24T11:03:14Z
+HEAD=804bfd2; runs/ read-only, verified identical; no API calls; no commit.
+TEST SUITE: 195 passed.
+
+================================================================================================================
+PUBLISHED (= Cohen's kappa) vs RECOMPUTED — with coverage, EMA, usable_agreement
+================================================================================================================
+  endpoint                   arm    pub kappa  new kappa     delta  |d|>0.01      EMA    cover   usable
+  -----------------------------------------------------------------------------------------------------
+  grade.needs_more_context   enum      0.9710     0.9705   -0.0005        no   0.9893   1.0000   0.9893
+  grade.needs_more_context   free      0.8050     0.8106   +0.0056        no   0.9213   0.9973   0.9189
+  grade.confidence           enum      0.9100     0.9099   -0.0001        no   0.9653   1.0000   0.9653
+  grade.confidence           free      0.6440     0.6512   +0.0072        no   0.9120   0.9973   0.9096
+  grade.scope                enum      0.9680     0.9683   +0.0003        no   0.9827   1.0000   0.9827
+  grade.scope                free      0.9190     0.9235   +0.0045        no   0.9560   0.9973   0.9535
+  synthesize.scope           enum      0.8580     0.8583   +0.0003        no   0.9853   1.0000   0.9853
+  synthesize.scope           free      0.8270     0.8274   +0.0004        no   0.9773   1.0000   0.9773
+  answer.normalized          enum           -     0.8505         -             0.8513   1.0000   0.8513
+  answer.normalized          free           -     0.8250         -             0.8260   1.0000   0.8260
+
+  kappa movements exceeding 0.01: 0  (none)
+
+  synthesize.confidence (descriptive, outside the family):
+    enum  kappa=0.8583  EMA=0.9853  TAR=0.9733  coverage=1.0000  usable=0.9853
+    free  kappa=0.8309  EMA=0.9780  TAR=0.9667  coverage=1.0000  usable=0.9780
+
+========================================================================================================
+PUBLISHED SERIES RECOMPUTED UNDER PREREGISTRATION SECTION 6
+========================================================================================================
+  question set: 150 pinned ids; gold loaded for 150
+  arms=['enum', 'free']  k=5  complete=150  excluded=0
+  per-call records: 3399
+  [PASS] 3399 records  3399
+  [PASS] k == 5  5
+  [PASS] 150 complete questions  150
+
+========================================================================================================
+[5] ROUTE STABILITY — primary endpoint (rewrite decision identical across all 5 runs)
+========================================================================================================
+  enum  flips=  4 of 150   route_stability=0.9733
+  free  flips= 25 of 150   route_stability=0.8333
+  [PASS] enum flips == 4 of 150  got 4
+  [PASS] free flips == 25 of 150  got 25
+
+========================================================================================================
+[6] synthesize.scope x synthesize.confidence — the bijection that removed an endpoint
+========================================================================================================
+  enum  n=750
+      full     -> high       709
+      none     -> low         21
+      partial  -> medium      20
+      breaks: 0 of 750
+  [PASS] enum full->high == 709  709
+  [PASS] enum none->low == 21  21
+  [PASS] enum partial->medium == 20  20
+  [PASS] enum breaks == 0  0
+  free  n=750
+      full     -> high       698
+      none     -> low         29
+      partial  -> medium      17
+      none     -> medium       5   <-- BREAK
+      none     -> high         1   <-- BREAK
+      breaks: 6 of 750
+  [PASS] free breaks == 6 of 744  6 of 750
+
+========================================================================================================
+[3] PUBLISHED vs RECOMPUTED — per-arm agreement, coverage, usable_agreement
+========================================================================================================
+  endpoint                   arm    published   new EMA    delta  coverage   usable      kappa
+  --------------------------------------------------------------------------------------------
+  grade.needs_more_context   enum      0.9710    0.9893  +0.0183    1.0000   0.9893     0.9705
+  grade.needs_more_context   free      0.8050    0.9213  +0.1163    0.9973   0.9189     0.8106
+  grade.confidence           enum      0.9100    0.9653  +0.0553    1.0000   0.9653     0.9099
+  grade.confidence           free      0.6440    0.9120  +0.2680    0.9973   0.9096     0.6512
+  grade.scope                enum      0.9680    0.9827  +0.0147    1.0000   0.9827     0.9683
+  grade.scope                free      0.9190    0.9560  +0.0370    0.9973   0.9535     0.9235
+  synthesize.scope           enum      0.8580    0.9853  +0.1273    1.0000   0.9853     0.8583
+  synthesize.scope           free      0.8270    0.9773  +0.1503    1.0000   0.9773     0.8274
+  answer.normalized          enum           -    0.8513        -    1.0000   0.8513     0.8505
+  answer.normalized          free           -    0.8260        -    1.0000   0.8260     0.8250
+
+  synthesize.confidence (DESCRIPTIVE — removed from the family as a bijective duplicate):
+    enum  EMA=0.9853  TAR=0.9733  coverage=1.0000  usable=0.9853  kappa=0.8583
+    free  EMA=0.9780  TAR=0.9667  coverage=1.0000  usable=0.9780  kappa=0.8309
+
+========================================================================================================
+[4] HOLM — recomputed p-values, family of 5
+========================================================================================================
+  endpoint                    published p        new p        delta
+  grade.needs_more_context       3.94e-05    5.893e-05    +1.95e-05
+  grade.confidence                0.00787    0.0095249     +0.00165
+  grade.scope                      0.0307     0.039757     +0.00906
+  synthesize.scope                  0.482      0.48223    +0.000225
+  answer.normalized                 0.287      0.28692    -8.17e-05
+
+  Holm over 5, PUBLISHED p-values:
+    grade.needs_more_context   raw=3.94e-05  rank=1  thr=0.01000  adj=0.000197  -> REJECT
+    grade.confidence           raw=0.00787  rank=2  thr=0.01250  adj=0.03148  -> REJECT
+    grade.scope                raw=0.0307  rank=3  thr=0.01667  adj=0.0921  -> RETAIN
+    answer.normalized          raw=0.287  rank=4  thr=0.02500  adj=0.574  -> RETAIN
+    synthesize.scope           raw=0.482  rank=5  thr=0.05000  adj=0.574  -> RETAIN
+
+  Holm over 5, RECOMPUTED p-values:
+    grade.needs_more_context   raw=5.893e-05  rank=1  thr=0.01000  adj=0.00029465  -> REJECT
+    grade.confidence           raw=0.0095249  rank=2  thr=0.01250  adj=0.0381  -> REJECT
+    grade.scope                raw=0.039757  rank=3  thr=0.01667  adj=0.11927  -> RETAIN
+    answer.normalized          raw=0.28692  rank=4  thr=0.02500  adj=0.57384  -> RETAIN
+    synthesize.scope           raw=0.48223  rank=5  thr=0.05000  adj=0.57384  -> RETAIN
+
+  Holm over 6 (the pre-removal family, published p-values + synthesize.confidence):
+    grade.needs_more_context   raw=3.94e-05  rank=1  thr=0.00833  -> REJECT
+    grade.confidence           raw=0.00787  rank=2  thr=0.01000  -> REJECT
+    grade.scope                raw=0.0307  rank=3  thr=0.01250  -> RETAIN
+    answer.normalized          raw=0.287  rank=4  thr=0.01667  -> RETAIN
+    synthesize.scope           raw=0.482  rank=5  thr=0.02500  -> RETAIN
+    synthesize.confidence      raw=0.57304  rank=6  thr=0.05000  -> RETAIN
+
+========================================================================================================
+[4b] THE SINGLE UNPARSED RECORD
+========================================================================================================
+  gpt-4o-mini-2024-07-18|None|free|grade  1/750 = 0.001333
+  coverage per endpoint (1.0 means the None convention excluded nothing):
+    grade.needs_more_context   enum  coverage=1.000000
+    grade.needs_more_context   free  coverage=0.997333   <-- pairs excluded here
+    grade.confidence           enum  coverage=1.000000
+    grade.confidence           free  coverage=0.997333   <-- pairs excluded here
+    grade.scope                enum  coverage=1.000000
+    grade.scope                free  coverage=0.997333   <-- pairs excluded here
+    synthesize.scope           enum  coverage=1.000000
+    synthesize.scope           free  coverage=1.000000
+
+========================================================================================================
+NO STOP CONDITION TRIGGERED
+========================================================================================================

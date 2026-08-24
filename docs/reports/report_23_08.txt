@@ -1,0 +1,386 @@
+=== Module 2 report — 2026-08-23T16:38:37Z ===
+
+--- runs/ baseline sha256 manifest ---
+files: 20
+manifest-of-manifest: 0f941720f9c4b6e377f620d076bb79ed2ca6bbc79d0213c7da67071e11cda580 *-
+
+--- git status --porcelain --ignored (BEFORE) ---
+ M src/agent.py
+ M src/config.py
+ M src/llm.py
+ M src/provenance.py
+ M src/run_experiment.py
+ M tests/test_agent.py
+ M tests/test_llm.py
+ M tests/test_provenance.py
+ M tests/test_run_experiment.py
+?? docs/
+?? report.txt
+?? report_23_08.txt
+?? src/hashing.py
+?? src/pilot.py
+?? src/preflight.py
+?? src/prompts.py
+?? tests/test_conditions.py
+!! .cache/
+!! .claude/
+!! .env
+!! .idea/workspace.xml
+!! .pytest_cache/
+!! .ruff_cache/
+!! .venv/
+!! chroma/
+!! runs/
+!! src/__pycache__/
+!! tests/__pycache__/
+
+--- .gitignore (BEFORE) ---
+# Secrets
+.env
+
+# Runtime artifacts (git-ignored except small fixtures)
+data/
+chroma/
+runs/
+.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+
+# IDE (volatile per-session state)
+.idea/workspace.xml
+
+========================================================================================
+[7.1] RECORD CENSUS over runs/
+========================================================================================
+    enum_run1      336
+    enum_run2      337
+    enum_run3      335
+    enum_run4      335
+    enum_run5      335
+    free_run1      344
+    free_run2      345
+    free_run3      344
+    free_run4      343
+    free_run5      345
+    TOTAL         3399
+  [PASS] census == 3399  got 3399
+    by arm : {'enum': 1678, 'free': 1721}
+    by node: {'grade': 1500, 'synthesize': 1500, 'rewrite': 399}
+
+========================================================================================
+[7.2] PARSER REPLAY over stored raw outputs (free arm)
+========================================================================================
+    grade        n= 750  {'ok': 749, 'unparsed': 1}
+    rewrite      n= 221  {'ok': 221}
+    synthesize   n= 750  {'ok': 750}
+  [PASS] free/grade unparsed == 1/750  got 1/750
+  [PASS] free/synthesize unparsed == 0/750  got 0/750
+
+========================================================================================
+[7.3] OUTPUT_SHAPE DISTRIBUTION by arm and node
+========================================================================================
+    arm    node                  empty    json_fenced    json_object  labeled_lines          prose   total
+    ------------------------------------------------------------------------------------------------------
+    enum   grade                     0              0            750              0              0     750
+    enum   rewrite                   0              0            178              0              0     178
+    enum   synthesize                0              0            750              0              0     750
+    free   grade                     0              0              0            750              0     750
+    free   rewrite                   0              0              0              0            221     221
+    free   synthesize                0              0              0              0            750     750
+
+========================================================================================
+[7.4] PINNED QUESTION SET
+========================================================================================
+  [PASS] n == 150  got 150
+  [PASS] sha256 == 498ec7b8…fee47  498ec7b8b03177bf6ec2ef7804977289589b0448eed4f3cfec11784fbd7fee47
+  [PASS] pin == ids used by the published manifests
+  [PASS] smoke file == first 15 sorted ids
+
+========================================================================================
+[7.5] FORMAT-APPENDIX WIRING ASSERTION
+========================================================================================
+    PASS  [published] format appendix attached to nodes NONE under condition=published
+    PASS  [published] (enum) appendix nodes == []
+    PASS  [published] (free) appendix nodes == []
+    PASS  [ablation] format appendix attached to nodes ['grade'] under condition=ablation
+    PASS  [ablation] (enum) appendix nodes == []
+    PASS  [ablation] (free) appendix nodes == ['grade']
+
+========================================================================================
+[7.6] CHROMA COLLECTION + CORPUS DIGEST (read-only; no re-embedding, no rebuild)
+========================================================================================
+    collection      : hotpotqa_distractor
+    document_count  : 1500
+    corpus_digest   : 5c4a72d6cc2c56b03d9a4426d944ab06fd671ac40d14f2049daf60ff284ae7b3
+    embedding_model : text-embedding-3-small
+    top_k           : 4
+  [PASS] collection is non-empty  count=1500
+
+========================================================================================
+[7.7] OUTPUT DIR GATE (fail-closed)
+========================================================================================
+    [PASS] runs         not ignored -> run may write here
+    [PASS] results      not ignored -> run may write here
+    [PASS] provenance   not ignored -> run may write here
+    [PASS] chroma       refused; responsible rule : .gitignore:8:chroma/	"C:\\Users\\lvivc\\PycharmProjects\\PythonProject\\Reproducible-RAG\\chroma"
+    [PASS] .cache       refused; responsible rule : .gitignore:9:.cache/	"C:\\Users\\lvivc\\PycharmProjects\\PythonProject\\Reproducible-RAG\\.cache"
+
+========================================================================================
+[7.8] OUTBOUND REQUEST INTERCEPTOR
+========================================================================================
+    outbound requests attempted during verification: 0
+  [PASS] zero outbound requests  0 attempted
+
+========================================================================================
+VERIFICATION: ALL CHECKS PASSED
+========================================================================================
+
+========================================================================================
+[7.9] GIT STATE — AFTER
+========================================================================================
+--- git status --porcelain --ignored (AFTER) ---
+ M .gitignore
+ M src/agent.py
+ M src/config.py
+ M src/data.py
+ M src/llm.py
+ M src/provenance.py
+ M src/run_experiment.py
+ M tests/test_agent.py
+ M tests/test_llm.py
+ M tests/test_provenance.py
+ M tests/test_run_experiment.py
+?? .gitattributes
+?? docs/
+?? pins/
+?? report.txt
+?? report_23_08.txt
+?? runs/
+?? src/hashing.py
+?? src/pilot.py
+?? src/preflight.py
+?? src/prompts.py
+?? tests/conftest.py
+?? tests/test_conditions.py
+?? tests/test_module2.py
+!! .cache/
+!! .claude/
+!! .env
+!! .idea/workspace.xml
+!! .pytest_cache/
+!! .ruff_cache/
+!! .venv/
+!! chroma/
+!! src/__pycache__/
+!! tests/__pycache__/
+
+--- git check-ignore -v runs results (AFTER) ---
+exit=1  (1 = neither path is ignored, which is the intent)
+
+--- .gitattributes ---
+# core.autocrlf=true on the authoring machine. Provenance manifests and pinned id lists are
+# hashed byte-for-byte, so git must never rewrite their line endings on checkout or commit.
+runs/** -text
+pins/** -text
+
+--- du -sh runs results chroma ---
+5.0M	runs
+(no results/ directory exists yet; the ignore rule is removed so one may be created)
+20M	chroma
+
+--- newly-tracked volume (untracked, non-ignored) ---
+total newly visible: 11.17 MB (limit 100 MB)
+
+========================================================================================
+[7.10] TEST SUITE
+========================================================================================
+  before Module 2 : 133 passed
+  after  Module 2 : 177 passed  (+44 new tests, 0 failures)
+  outbound requests during the suite: 0
+
+========================================================================================
+[7.11] runs/ INTEGRITY — per-file sha256 manifest, start vs end
+========================================================================================
+  files at start : 20
+  files at end   : 20
+  [PASS] IDENTICAL — runs/ was not modified at any point in this module
+
+  manifest digest (start): 0f941720f9c4b6e377f620d076bb79ed2ca6bbc79d0213c7da67071e11cda580
+  manifest digest (end)  : 0f941720f9c4b6e377f620d076bb79ed2ca6bbc79d0213c7da67071e11cda580
+
+  per-file sha256 (end):
+    e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 *runs/enum_run1/.done
+    b1870111e89c3e6cbd2332541435a68b3d70bbe7fd150d5e0feb2c88ceb77c46 *runs/enum_run1/run_manifest_enum_run1.jsonl
+    e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 *runs/enum_run2/.done
+    20e5b3edeae6b1f2968b171ff812d36ba448bee9c9c245aaf889604dfa7e0c80 *runs/enum_run2/run_manifest_enum_run2.jsonl
+    e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 *runs/enum_run3/.done
+    d5c587266f9b7e552cbaaa66cbcdad00d305e1ae12183b6ec234ef49a57d01cf *runs/enum_run3/run_manifest__enum_run3.jsonl
+    e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 *runs/enum_run4/.done
+    8c0e262ea5b9f84be04a4dfbe34dcf89b3a7d025f51d1f6483b34cbb3255c788 *runs/enum_run4/run_manifest__enum_run4.jsonl
+    e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 *runs/enum_run5/.done
+    8b8a46d2a790a41a3c559a3e3e3ba931a838d8a59c8012f9a987b83ba8b4a26b *runs/enum_run5/run_manifest__enum_run5.jsonl
+    e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 *runs/free_run1/.done
+    28dc732b601f7e8639688e394d1fb871a3da634f189bd18def1747a969627361 *runs/free_run1/run_manifest_free_run1.jsonl
+    e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 *runs/free_run2/.done
+    ea8f4b848e120c7c40e7781f87225351cb1f854f4b359ca00bee4d21eb661574 *runs/free_run2/run_manifest_free_run2.jsonl
+    e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 *runs/free_run3/.done
+    e38dc0ac2b5ab8b56ecf578806612fcc5ed0c1d5f9ab26b30991ffe304e827e4 *runs/free_run3/run_manifest_free_run3.jsonl
+    e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 *runs/free_run4/.done
+    86462144e2a9c80587e502a17381692bdf0569266586642828db20d74d8b98b3 *runs/free_run4/run_manifest__free_run4.jsonl
+    e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 *runs/free_run5/.done
+    d816d00a21e9848a4038161aeafadcbc970ba043a775af68807c8971555b8c60 *runs/free_run5/run_manifest_free_run5.jsonl
+
+========================================================================================
+[7.12] OFFLINE END-TO-END DRIVER RUN (fakes only, condition=ablation, arm=free)
+========================================================================================
+=== emitted per-call records: 4 ===
+  node=grade       condition=ablation  run_index=1 arm=free  shape=labeled_lines  parse=ok        suffix_nodes=['grade']
+  node=synthesize  condition=ablation  run_index=1 arm=free  shape=labeled_lines  parse=ok        suffix_nodes=['grade']
+  node=grade       condition=ablation  run_index=1 arm=free  shape=labeled_lines  parse=ok        suffix_nodes=['grade']
+  node=synthesize  condition=ablation  run_index=1 arm=free  shape=labeled_lines  parse=ok        suffix_nodes=['grade']
+
+=== full first record ===
+
+  Interpretation: on the ablation/free run the grade node carries the appendix
+  (format_suffix_nodes=['grade']) and synthesize does not — the containment property,
+  now visible per record rather than only asserted at run start.
+
+  run-level manifest written to <run_dir>/run_manifest.json
+  working tree dirty -> git_diff_HEAD.patch dumped beside it: yes
+  outbound requests during the end-to-end run: 0
+
+========================================================================================
+FILES CHANGED (nothing committed, nothing staged)
+========================================================================================
+modified:
+  .gitignore              runs/ + results/ un-ignored (caches and venv still ignored)
+  src/provenance.py       new record fields, output_shape/parse_status observers, run manifest
+  src/llm.py              request-body interception, condition kwarg, per-call wiring assert
+  src/prompts.py          suffixed_nodes / suffixed_nodes_for_condition
+  src/preflight.py        appendix-wiring assert, pin loader, fail-closed output-dir gate
+  src/run_experiment.py   pinned ids (never the sampler), new gates, run manifest per run
+  src/agent.py            threads condition into call_llm; smoke CLI reads pinned ids
+  src/data.py             load_questions_by_ids (no RNG in the path)
+  tests/*                 call sites updated; tests/test_module2.py added (+44)
+new:
+  .gitattributes          runs/** -text, pins/** -text
+  pins/published_question_ids.json   150 ids, sha256 498ec7b8…fee47
+  pins/smoke_question_ids.json       first 15 sorted ids
+  tests/conftest.py       git_tmp_path / init_git_repo fixture
+  tests/test_module2.py   44 tests over the Module 2 surface
+untouched (as instructed): runs/ contents, prompt text, parser rules, node/graph logic,
+  metrics, aggregator
+
+--- git staged (must be empty) ---
+(exit 0)
+--- HEAD (unchanged) ---
+05ea5aa Add grayscale bilingual figures (UK/EN) and i18n labels module
+
+END OF REPORT
+
+
+########################################################################################
+# ADDENDUM — _LABELLED_LINE_RE single-source-of-truth fix
+########################################################################################
+
+DEFECT: the observer hard-coded ':' while the parser's llm._DELIMITERS is '[:—–-]'.
+gpt-4o-mini used an em-dash (U+2014) at the free/synthesize node on all 750 calls, which
+the parser read as labelled fields (parse_status ok 750/750) while the observer reported
+'prose'. The earlier free/synthesize prose=750 cell was an artifact of that regex, not a
+behavioural difference in the model.
+
+FIX: provenance._LABELLED_LINE_RE (a module constant) is replaced by
+provenance._labelled_line_re(), an lru_cache(1) factory that lazily imports
+llm._DELIMITERS and interpolates it. Lazy because llm imports provenance; a module-level
+import would close the cycle. Whitespace after the delimiter is required, so a hyphenated
+first word ('Multi-word answer') cannot read as a label named 'Multi'.
+The delimiter class now has exactly one home: llm._DELIMITERS.
+
+============================================================================================
+RE-VERIFICATION after the _LABELLED_LINE_RE single-source-of-truth fix
+============================================================================================
+  records read from runs/ (read-only): 3399
+  parser delimiter class llm._DELIMITERS : '[:—–-]'
+  observer pattern derives from it       : True
+  [PASS] census == 3399  got 3399
+
+============================================================================================
+[3] OUTPUT_SHAPE DISTRIBUTION — all 3399 records, by arm and node
+============================================================================================
+  arm    node                  empty    json_fenced    json_object  labeled_lines          prose   total
+  ------------------------------------------------------------------------------------------------------
+  enum   grade                     0              0            750              0              0     750
+  enum   rewrite                   0              0            178              0              0     178
+  enum   synthesize                0              0            750              0              0     750
+  free   grade                     0              0              0            750              0     750
+  free   rewrite                   0              0              0              0            221     221
+  free   synthesize                0              0              0            750              0     750
+  ------------------------------------------------------------------------------------------------------
+  ALL                              0              0           1678           1500            221    3399
+
+  required assertions:
+  [PASS] enum/grade      json_object 750/750  {'json_object': 750}
+  [PASS] enum/synthesize json_object 750/750  {'json_object': 750}
+  [PASS] free/grade      labeled_lines 750/750  {'labeled_lines': 750}
+  [PASS] free/synthesize labeled_lines 750/750  {'labeled_lines': 750}
+  [INFO] free/rewrite  -> {'prose': 221}
+  [INFO] enum/rewrite  -> {'json_object': 178}
+
+============================================================================================
+[3b] PARSE_STATUS — must be UNCHANGED by an observer-only edit
+============================================================================================
+  free/grade        {'ok': 749, 'unparsed': 1}
+  free/rewrite      {'ok': 221}
+  free/synthesize   {'ok': 750}
+  [PASS] free/grade unparsed == 1/750  1/750
+  [PASS] free/synthesize unparsed == 0/750  0/750
+
+============================================================================================
+[4] FIRST-LINE DELIMITER (reported here; NOT added as a record field — see report)
+============================================================================================
+  enum   grade        {'(none)': 750}
+  enum   rewrite      {'(none)': 178}
+  enum   synthesize   {'(none)': 750}
+  free   grade        {':': 750}
+  free   rewrite      {'(none)': 221}
+  free   synthesize   {'—': 750}
+
+============================================================================================
+  outbound requests during re-verification: 0
+  [PASS] zero outbound requests  0
+============================================================================================
+RE-VERIFICATION: ALL CHECKS PASSED
+============================================================================================
+
+========================================================================================
+[2] REGRESSION GUARD
+========================================================================================
+  tests/test_module2.py::test_observer_delimiters_derive_from_the_parser
+    structural : llm._DELIMITERS appears verbatim in the compiled observer pattern
+    behavioural: patch _DELIMITERS to '[=]' -> observer honours '=' and drops em-dash
+  Proven to fail on the regression: re-hardcoding ':' in the observer makes BOTH
+  test_observer_delimiters_derive_from_the_parser and
+  test_labeled_lines_accepts_every_parser_delimiter fail; both pass after restore.
+
+========================================================================================
+[5] TEST SUITE
+========================================================================================
+  before Module 2      : 133 passed
+  after Module 2       : 177 passed
+  after this fix       : 180 passed  (+3: delimiter derivation, all-delimiters,
+                                       hyphenated-prose false-positive guard)
+  outbound requests during the suite : 0
+  ruff                 : 1 error, pre-existing (src/config.py:297 F402), untouched
+
+  runs/ per-file sha256: IDENTICAL to session start (read-only throughout)
+  staged: docs/preregistration_2026-08-23.md (staged by the IDE, not by this session;
+          left untouched). Nothing else staged, nothing committed.
+
+END OF ADDENDUM

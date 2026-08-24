@@ -1,0 +1,281 @@
+AGGREGATOR CONVENTION CHANGE — prereg section 6 — 2026-08-24T10:33:09Z
+HEAD=804bfd2  no commit, no staging
+runs/ and runs_smoke/ read-only; no API calls.
+
+TEST SUITE: 193 passed (was 177). +16 = 12 convention tests, 1 emphasis test, 3 manifest/other.
+RUFF: 1 error, pre-existing (src/config.py:297 F402), untouched.
+
+================================================================================================
+[6] VERBATIM RAW TEXT — luna, free arm (UTF-8 forced)
+================================================================================================
+
+################################################################################################
+# luna / free / grade  — 60 records total, showing 3
+################################################################################################
+
+--- RECORD 1  qid=5a713f395542994082a3e6ea  cond=ablation  run_index=1  len=52  shape=labeled_lines  parse_status=ok
+--- parsed: {"confidence": "high", "needs_more_context": false, "scope": "full"}
+--- VERBATIM BEGIN ---
+scope: fully
+confidence: high
+needs_more_context: no
+--- VERBATIM END ---
+
+--- RECORD 2  qid=5a7313865542994cef4bc442  cond=ablation  run_index=1  len=52  shape=labeled_lines  parse_status=ok
+--- parsed: {"confidence": "high", "needs_more_context": false, "scope": "full"}
+--- VERBATIM BEGIN ---
+scope: fully
+confidence: high
+needs_more_context: no
+--- VERBATIM END ---
+
+--- RECORD 3  qid=5a7336bd5542991f9a20c68c  cond=ablation  run_index=1  len=52  shape=labeled_lines  parse_status=ok
+--- parsed: {"confidence": "high", "needs_more_context": false, "scope": "full"}
+--- VERBATIM BEGIN ---
+scope: fully
+confidence: high
+needs_more_context: no
+--- VERBATIM END ---
+
+################################################################################################
+# luna / free / synthesize  — 60 records total, showing 3
+################################################################################################
+
+--- RECORD 1  qid=5a713f395542994082a3e6ea  cond=ablation  run_index=1  len=287  shape=prose  parse_status=ok
+--- parsed: {"answer": "** The Maine Legislature convenes at the State House in Augusta, Maine.  \n**", "confidence": "high", "scope": "full", "supporting_doc_ids": ["fb346b27fd2603651154f28bafb863f1f49b2f6d05b844088c3441db41f2551b", "f9531cc4af453ac5a61f58dc41f2da2424a7c0923ec83b4c90fec2db75a9fc4a"]}
+--- VERBATIM BEGIN ---
+**Answer:** The Maine Legislature convenes at the State House in Augusta, Maine.  
+**Confidence:** High  
+**Scope:** Fully covered  
+**Supporting_doc_ids:** fb346b27fd2603651154f28bafb863f1f49b2f6d05b844088c3441db41f2551b, f9531cc4af453ac5a61f58dc41f2da2424a7c0923ec83b4c90fec2db75a9fc4a
+--- VERBATIM END ---
+
+--- RECORD 2  qid=5a7313865542994cef4bc442  cond=ablation  run_index=1  len=352  shape=prose  parse_status=ok
+--- parsed: {"answer": "** Pondicherry Gramin Bank is a **Regional Rural Bank (RRB)**, a local-level banking organization operating in different states of India.\n\n**", "confidence": "high", "scope": "full", "supporting_doc_ids": ["773abd8b8685d10201e96f5ee9e9189fd7a0d2e510b7e7bf6a0a84e44707a142", "d31451d40fe2584010e7892d7967dc17fb72959c76250f732b267648c3fd36c4"]}
+--- VERBATIM BEGIN ---
+**Answer:** Pondicherry Gramin Bank is a **Regional Rural Bank (RRB)**, a local-level banking organization operating in different states of India.
+
+**Confidence:** High  
+**Scope:** Fully covered  
+**Supporting_doc_ids:** 773abd8b8685d10201e96f5ee9e9189fd7a0d2e510b7e7bf6a0a84e44707a142, d31451d40fe2584010e7892d7967dc17fb72959c76250f732b267648c3fd36c4
+--- VERBATIM END ---
+
+--- RECORD 3  qid=5a7336bd5542991f9a20c68c  cond=ablation  run_index=1  len=252  shape=labeled_lines  parse_status=ok
+--- parsed: {"answer": "Mensch ärgere dich nicht is the board game.", "confidence": "high", "scope": "full", "supporting_doc_ids": ["d4efdbff5be8e4a848856ab1ca2d25462930f25faa314f4423ea31a287895246", "eaa772f917e165b30ae052d45d8432be5c4a71dbabacf0cdf6611fd5af30e784"]}
+--- VERBATIM BEGIN ---
+answer: Mensch ärgere dich nicht is the board game.  
+confidence: high  
+scope: fully covered  
+supporting_doc_ids: ["d4efdbff5be8e4a848856ab1ca2d25462930f25faa314f4423ea31a287895246", "eaa772f917e165b30ae052d45d8432be5c4a71dbabacf0cdf6611fd5af30e784"]
+--- VERBATIM END ---
+
+================================================================================================
+[7] AGGREGATOR over each runs_smoke cell
+================================================================================================
+  gold questions injected: 15
+  pre-registered secondary family (Holm over 5): ['grade.needs_more_context', 'grade.confidence', 'grade.scope', 'synthesize.scope', 'answer.normalized']
+  convention: fully degenerate field -> kappa undefined, EMA reported (prereg section 2)
+
+################################################################################################
+# AGGREGATOR CELL: 4omini_ablation   (model=gpt-4o-mini, condition=ablation)
+################################################################################################
+Runs: C:\Users\lvivc\PycharmProjects\PythonProject\Reproducible-RAG\runs_smoke\4omini_ablation  arms=['free']  k=2
+Complete questions: 15  (excluded 0)
+
+=== arm: free ===  rewrite_rate=0.267
+  field                           TARa     EMA    CohenK   FleissK  coverage
+  synthesize.confidence          1.000   1.000     1.000     1.000     1.000
+  synthesize.scope               1.000   1.000     1.000     1.000     1.000
+  grade.confidence               0.933   0.933     0.634     0.630     1.000
+  grade.scope                    0.933   0.933     0.893     0.892     1.000
+  grade.needs_more_context       1.000   1.000     1.000     1.000     1.000
+  answer(norm)                   0.933   0.933     0.929
+  answer TARr: raw=0.867 response=0.800  BERTScore-F1=undefined
+  quality vs gold: EM=0.067+/-0.000  F1=0.262+/-0.000  Contains=0.600+/-0.000
+  answer length: 14.167 tokens / 93.767 chars (mean)
+
+=== unparsed_rate (descriptive, section 6.3; not in the corrected family) ===
+  model                   condition  arm   node            n  unparsed     rate
+  gpt-4o-mini-2024-07-18  ablation   free  grade          30         0    0.000
+  gpt-4o-mini-2024-07-18  ablation   free  rewrite         8         0    0.000
+  gpt-4o-mini-2024-07-18  ablation   free  synthesize     30         0    0.000
+
+=== route_on_missing_signal (section 6.4): grade parse_status x rewrite taken ===
+  arm   grade parse_status      n  rewrote  no rewrite    rate
+  free  ok                     30        8          22   0.267
+
+
+################################################################################################
+# AGGREGATOR CELL: 4omini_published   (model=gpt-4o-mini, condition=published)
+################################################################################################
+Runs: C:\Users\lvivc\PycharmProjects\PythonProject\Reproducible-RAG\runs_smoke\4omini_published  arms=['enum', 'free']  k=2
+Complete questions: 15  (excluded 0)
+
+=== arm: enum ===  rewrite_rate=0.233
+  field                           TARa     EMA    CohenK   FleissK  coverage
+  synthesize.confidence          1.000   1.000     1.000     1.000     1.000
+  synthesize.scope               1.000   1.000     1.000     1.000     1.000
+  grade.confidence               1.000   1.000     1.000     1.000     1.000
+  grade.scope                    1.000   1.000     1.000     1.000     1.000
+  grade.needs_more_context       0.933   0.933     0.815     0.814     1.000
+  answer(norm)                   0.800   0.800     0.789
+  answer TARr: raw=0.800 response=0.800  BERTScore-F1=undefined
+  quality vs gold: EM=0.000+/-0.000  F1=0.198+/-0.000  Contains=0.667+/-0.000
+  answer length: 16.133 tokens / 102.767 chars (mean)
+
+=== arm: free ===  rewrite_rate=0.267
+  field                           TARa     EMA    CohenK   FleissK  coverage
+  synthesize.confidence          1.000   1.000     1.000     1.000     1.000
+  synthesize.scope               1.000   1.000     1.000     1.000     1.000
+  grade.confidence               1.000   1.000     1.000     1.000     1.000
+  grade.scope                    1.000   1.000     1.000     1.000     1.000
+  grade.needs_more_context       1.000   1.000     1.000     1.000     1.000
+  answer(norm)                   0.867   0.867     0.858
+  answer TARr: raw=0.800 response=0.800  BERTScore-F1=undefined
+  quality vs gold: EM=0.067+/-0.000  F1=0.274+/-0.013  Contains=0.600+/-0.000
+  answer length: 13.600 tokens / 89.867 chars (mean)
+
+=== unparsed_rate (descriptive, section 6.3; not in the corrected family) ===
+  model                   condition  arm   node            n  unparsed     rate
+  gpt-4o-mini-2024-07-18  published  enum  grade          30         0    0.000
+  gpt-4o-mini-2024-07-18  published  enum  rewrite         7         0    0.000
+  gpt-4o-mini-2024-07-18  published  enum  synthesize     30         0    0.000
+  gpt-4o-mini-2024-07-18  published  free  grade          30         0    0.000
+  gpt-4o-mini-2024-07-18  published  free  rewrite         8         0    0.000
+  gpt-4o-mini-2024-07-18  published  free  synthesize     30         0    0.000
+
+=== route_on_missing_signal (section 6.4): grade parse_status x rewrite taken ===
+  arm   grade parse_status      n  rewrote  no rewrite    rate
+  enum  ok                     30        7          23   0.233
+  free  ok                     30        8          22   0.267
+
+=== enum vs free (paired by question; delta = enum - free) ===
+  synthesize.confidence      0.000  p=1.000  CI95=['0.000', '0.000']  cliffs_d=0.000  d_kappa=0.000  cov=1.000(n=15)
+  synthesize.scope           0.000  p=1.000  CI95=['0.000', '0.000']  cliffs_d=0.000  d_kappa=0.000  cov=1.000(n=15)
+  grade.confidence           0.000  p=1.000  CI95=['0.000', '0.000']  cliffs_d=0.000  d_kappa=0.000  cov=1.000(n=15)
+  grade.scope                0.000  p=1.000  CI95=['0.000', '0.000']  cliffs_d=0.000  d_kappa=0.000  cov=1.000(n=15)
+  grade.needs_more_context  -0.067  p=0.317  CI95=['-0.200', '0.000']  cliffs_d=-0.067  d_kappa=-0.185  cov=1.000(n=15)
+  answer.normalized         -0.067  p=0.564  CI95=['-0.267', '0.133']  cliffs_d=-0.067  cov=1.000(n=15)
+  d_F1                      -0.076  p=0.237  CI95=['-0.203', '0.014']  cliffs_d=-0.053
+  d_containment              0.067  p=0.317  CI95=['0.000', '0.200']  cliffs_d=0.067
+
+
+################################################################################################
+# AGGREGATOR CELL: luna_ablation   (model=gpt-5.6-luna, condition=ablation)
+################################################################################################
+Runs: C:\Users\lvivc\PycharmProjects\PythonProject\Reproducible-RAG\runs_smoke\luna_ablation  arms=['free']  k=2
+Complete questions: 15  (excluded 0)
+
+=== arm: free ===  rewrite_rate=0.333
+  field                           TARa     EMA    CohenK   FleissK  coverage
+  synthesize.confidence          1.000   1.000 undefined undefined     1.000
+  synthesize.scope               1.000   1.000     1.000     1.000     1.000
+  grade.confidence               1.000   1.000 undefined undefined     1.000
+  grade.scope                    1.000   1.000     1.000     1.000     1.000
+  grade.needs_more_context       1.000   1.000     1.000     1.000     1.000
+  answer(norm)                   0.600   0.600     0.583
+  answer TARr: raw=0.467 response=0.333  BERTScore-F1=undefined
+  quality vs gold: EM=0.133+/-0.067  F1=0.436+/-0.053  Contains=0.633+/-0.033
+  answer length: 7.233 tokens / 54.433 chars (mean)
+
+=== unparsed_rate (descriptive, section 6.3; not in the corrected family) ===
+  model                   condition  arm   node            n  unparsed     rate
+  gpt-5.6-luna            ablation   free  grade          30         0    0.000
+  gpt-5.6-luna            ablation   free  rewrite        10         0    0.000
+  gpt-5.6-luna            ablation   free  synthesize     30         0    0.000
+
+=== route_on_missing_signal (section 6.4): grade parse_status x rewrite taken ===
+  arm   grade parse_status      n  rewrote  no rewrite    rate
+  free  ok                     30       10          20   0.333
+
+
+################################################################################################
+# AGGREGATOR CELL: luna_published   (model=gpt-5.6-luna, condition=published)
+################################################################################################
+Runs: C:\Users\lvivc\PycharmProjects\PythonProject\Reproducible-RAG\runs_smoke\luna_published  arms=['enum', 'free']  k=2
+Complete questions: 15  (excluded 0)
+
+=== arm: enum ===  rewrite_rate=0.233
+  field                           TARa     EMA    CohenK   FleissK  coverage
+  synthesize.confidence          1.000   1.000 undefined undefined     1.000
+  synthesize.scope               1.000   1.000     1.000     1.000     1.000
+  grade.confidence               1.000   1.000 undefined undefined     1.000
+  grade.scope                    0.933   0.933     0.826     0.825     1.000
+  grade.needs_more_context       0.933   0.933     0.815     0.814     1.000
+  answer(norm)                   0.667   0.667     0.651
+  answer TARr: raw=0.667 response=0.667  BERTScore-F1=undefined
+  quality vs gold: EM=0.067+/-0.000  F1=0.275+/-0.001  Contains=0.600+/-0.000
+  answer length: 11.600 tokens / 77.167 chars (mean)
+
+=== arm: free ===  rewrite_rate=0.000
+  field                           TARa     EMA    CohenK   FleissK  coverage
+  synthesize.confidence          1.000   1.000     1.000     1.000     1.000
+  synthesize.scope               1.000   1.000     1.000     1.000     1.000
+  grade.confidence               1.000   1.000 undefined undefined     0.133  <LOW COVERAGE>
+  grade.scope                    1.000   1.000 undefined undefined     0.133  <LOW COVERAGE>
+  grade.needs_more_context       1.000   1.000 undefined undefined     0.133  <LOW COVERAGE>
+  answer(norm)                   0.600   0.600     0.583
+  answer TARr: raw=0.400 response=0.400  BERTScore-F1=undefined
+  quality vs gold: EM=0.167+/-0.033  F1=0.401+/-0.001  Contains=0.600+/-0.000
+  answer length: 8.133 tokens / 61.000 chars (mean)
+
+=== unparsed_rate (descriptive, section 6.3; not in the corrected family) ===
+  model                   condition  arm   node            n  unparsed     rate
+  gpt-5.6-luna            published  enum  grade          30         0    0.000
+  gpt-5.6-luna            published  enum  rewrite         7         0    0.000
+  gpt-5.6-luna            published  enum  synthesize     30         0    0.000
+  gpt-5.6-luna            published  free  grade          30        23    0.767
+  gpt-5.6-luna            published  free  synthesize     30         0    0.000
+
+=== route_on_missing_signal (section 6.4): grade parse_status x rewrite taken ===
+  arm   grade parse_status      n  rewrote  no rewrite    rate
+  enum  ok                     30        7          23   0.233
+  free  ok                      7        0           7   0.000
+  free  unparsed               23        0          23   0.000
+
+=== enum vs free (paired by question; delta = enum - free) ===
+  synthesize.confidence      0.000  p=1.000  CI95=['0.000', '0.000']  cliffs_d=0.000  d_kappa=undefined  cov=1.000(n=15)
+  synthesize.scope           0.000  p=1.000  CI95=['0.000', '0.000']  cliffs_d=0.000  d_kappa=0.000  cov=1.000(n=15)
+  grade.confidence           0.000  p=1.000  CI95=['0.000', '0.000']  cliffs_d=0.000  d_kappa=undefined  cov=0.133(n=2)  <LOW COVERAGE>
+  grade.scope                0.000  p=1.000  CI95=['0.000', '0.000']  cliffs_d=0.000  d_kappa=undefined  cov=0.133(n=2)  <LOW COVERAGE>
+  grade.needs_more_context   0.000  p=1.000  CI95=['0.000', '0.000']  cliffs_d=0.000  d_kappa=undefined  cov=0.133(n=2)  <LOW COVERAGE>
+  answer.normalized          0.067  p=0.705  CI95=['-0.267', '0.400']  cliffs_d=0.067  cov=1.000(n=15)
+  d_F1                      -0.126  p=0.028  CI95=['-0.237', '-0.028']  cliffs_d=-0.262
+  d_containment              0.000  p=1.000  CI95=['0.000', '0.000']  cliffs_d=0.000
+
+
+================================================================================================
+[7b] FAMILY TABLE — kappa vs EMA, degeneracy flagged
+================================================================================================
+  cell                   arm   endpoint                      cohen_kappa      EMA      TAR  coverage  note
+  --------------------------------------------------------------------------------------------------------
+  4omini_ablation        free  grade.needs_more_context           1.0000   1.0000   1.0000    1.0000  
+  4omini_ablation        free  grade.confidence                   0.6341   0.9333   0.9333    1.0000  
+  4omini_ablation        free  grade.scope                        0.8929   0.9333   0.9333    1.0000  
+  4omini_ablation        free  synthesize.scope                   1.0000   1.0000   1.0000    1.0000  
+  4omini_ablation        free  answer.normalized                  0.9289   0.9333   0.9333         -  
+  4omini_published       enum  grade.needs_more_context           0.8148   0.9333   0.9333    1.0000  
+  4omini_published       enum  grade.confidence                   1.0000   1.0000   1.0000    1.0000  
+  4omini_published       enum  grade.scope                        1.0000   1.0000   1.0000    1.0000  
+  4omini_published       enum  synthesize.scope                   1.0000   1.0000   1.0000    1.0000  
+  4omini_published       enum  answer.normalized                  0.7887   0.8000   0.8000         -  
+  4omini_published       free  grade.needs_more_context           1.0000   1.0000   1.0000    1.0000  
+  4omini_published       free  grade.confidence                   1.0000   1.0000   1.0000    1.0000  
+  4omini_published       free  grade.scope                        1.0000   1.0000   1.0000    1.0000  
+  4omini_published       free  synthesize.scope                   1.0000   1.0000   1.0000    1.0000  
+  4omini_published       free  answer.normalized                  0.8585   0.8667   0.8667         -  
+  luna_ablation          free  grade.needs_more_context           1.0000   1.0000   1.0000    1.0000  
+  luna_ablation          free  grade.confidence                undefined   1.0000   1.0000    1.0000  kappa UNDEFINED -> EMA primary
+  luna_ablation          free  grade.scope                        1.0000   1.0000   1.0000    1.0000  
+  luna_ablation          free  synthesize.scope                   1.0000   1.0000   1.0000    1.0000  
+  luna_ablation          free  answer.normalized                  0.5833   0.6000   0.6000         -  
+  luna_published         enum  grade.needs_more_context           0.8148   0.9333   0.9333    1.0000  
+  luna_published         enum  grade.confidence                undefined   1.0000   1.0000    1.0000  kappa UNDEFINED -> EMA primary
+  luna_published         enum  grade.scope                        0.8256   0.9333   0.9333    1.0000  
+  luna_published         enum  synthesize.scope                   1.0000   1.0000   1.0000    1.0000  
+  luna_published         enum  answer.normalized                  0.6512   0.6667   0.6667         -  
+  luna_published         free  grade.needs_more_context        undefined   1.0000   1.0000    0.1333  kappa UNDEFINED -> EMA primary; LOW COVERAGE (<0.5): not usable for a stability claim
+  luna_published         free  grade.confidence                undefined   1.0000   1.0000    0.1333  kappa UNDEFINED -> EMA primary; LOW COVERAGE (<0.5): not usable for a stability claim
+  luna_published         free  grade.scope                     undefined   1.0000   1.0000    0.1333  kappa UNDEFINED -> EMA primary; LOW COVERAGE (<0.5): not usable for a stability claim
+  luna_published         free  synthesize.scope                   1.0000   1.0000   1.0000    1.0000  
+  luna_published         free  answer.normalized                  0.5833   0.6000   0.6000         -  

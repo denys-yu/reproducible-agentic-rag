@@ -4,3 +4,6 @@ runs/** -text
 pins/** -text
 
 docs/payload_capture/** -text
+
+runs_smoke/** -text
+runs2/** -text

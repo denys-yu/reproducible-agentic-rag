@@ -1,0 +1,37 @@
+{
+  "arms": [
+    "free"
+  ],
+  "condition": "ablation",
+  "corpus": {
+    "chroma_collection": "hotpotqa_distractor",
+    "corpus_digest": "5c4a72d6cc2c56b03d9a4426d944ab06fd671ac40d14f2049daf60ff284ae7b3",
+    "document_count": 1500,
+    "embedding_dimensions": 1536,
+    "embedding_model": "text-embedding-3-small",
+    "top_k": 4
+  },
+  "created_at": "2026-08-24T09:46:54.676324+00:00",
+  "git": {
+    "commit": "804bfd24585ad52547d4b98a5acf74025179be43",
+    "diff_file": "git_diff_HEAD.patch",
+    "dirty": true
+  },
+  "lib_versions": {
+    "chromadb": "1.5.9",
+    "langchain": "0.3.30",
+    "langchain_openai": "0.3.35",
+    "langgraph": "0.2.76",
+    "openai": "2.42.0",
+    "pydantic": "2.13.4"
+  },
+  "models": [
+    "gpt-4o-mini-2024-07-18"
+  ],
+  "python_version": "3.12.6",
+  "question_set": {
+    "n_questions": 15,
+    "sha256": "437c6775f36b3d48b6916c5b54cecc31db9f4fadf22d428c48b4179bdf7dbb0f"
+  },
+  "run_id": "free_run2"
+}
