@@ -1,0 +1,9 @@
+# core.autocrlf=true on the authoring machine. Provenance manifests and pinned id lists are
+# hashed byte-for-byte, so git must never rewrite their line endings on checkout or commit.
+runs/** -text
+pins/** -text
+
+docs/payload_capture/** -text
+
+runs_smoke/** -text
+runs2/** -text

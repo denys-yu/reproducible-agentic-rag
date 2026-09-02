@@ -1,0 +1,8 @@
+{
+  "source": "docs/preregistration_2026-08-23.md section 5, committed 9433b1f before any second-series execution",
+  "collection": "hotpotqa_distractor",
+  "document_count": 1500,
+  "corpus_digest": "5c4a72d6cc2c56b03d9a4426d944ab06fd671ac40d14f2049daf60ff284ae7b3",
+  "embedding_model": "text-embedding-3-small",
+  "top_k": 4
+}

@@ -1,0 +1,76 @@
+RECOVERY REPORT — published-series configuration
+=================================================
+
+Both files written, nothing else touched.
+
+published_commit = d6efcab38e9f0fab331ecafa164509a77c181f4e
+(2026-07-01, "Public release: reproducible agentic RAG experiment")
+— the only commit that has ever touched results.json, confirmed via --follow,
+--all, and a scan of all 25 commits.
+
+
+BYTE-IDENTITY CHECK SURFACED A TRAP
+-----------------------------------
+The raw on-disk results.json hashes to 14a0f42e..., NOT the blob's bfd84e73....
+That is core.autocrlf=true: disk is CRLF (8653 B), blob is LF (8374 B).
+Normalized they match exactly. Any later verifier that hashes the file off disk
+on Windows must normalize line endings or it will wrongly conclude tampering.
+
+
+IS THE CODE AT THAT COMMIT ACTUALLY THE CODE THAT RAN?
+------------------------------------------------------
+results.json has a 06-19 mtime but a 07-01 commit, so this needed proving rather
+than assuming. d6efcab touched NO experiment source (only results.json, figures,
+README, LICENSE, lockfiles), and every pipeline file was frozen by 06-18 — only
+metrics.py moved on 06-19, and metrics are computed FROM runs. The read point is
+sound.
+
+
+THE HEADLINE FINDING
+--------------------
+FREE_FORMAT_SUFFIX exists only in the uncommitted working tree. It is absent from
+every commit in history, and src/prompts.py has never existed. The published
+series therefore ran with BOTH ARMS SENDING BYTE-IDENTICAL SYSTEM PROMPTS, and
+with the older base wording ("fully, partially, or not at all (none)",
+"(high, medium, low)") — not the current "full, partial, or none" phrasing.
+
+The published numbers sit on a THIRD side of the wiring, distinct from both
+results/ directories. This was added to the existing memory note.
+
+Between d6efcab and committed HEAD, the only change to any experiment-critical
+file is a config.py DOCSTRING EDIT (dropping a CLAUDE.md reference). All prompts,
+schemas and hashes are identical at both.
+
+"exactly one of" appears at none of the three states.
+Enum domains unchanged everywhere: full/partial/none, high/medium/low.
+
+Cross-check holds: 0.23733 x 750 = 178.0 and 0.29467 x 750 = 221.0, both exact
+integers, independently confirming the 150 x 5 denominator. The rewrite cap is
+enforced at three points in the graph.
+
+
+TWO THINGS TO FLAG
+------------------
+Seven Unresolved items; the two that constrain a restoration module most:
+
+  * The per-call prompt_sha256 digests CANNOT be reconstructed — call_llm hashes
+    the FULL messages list including the user message built from question text
+    plus retrieved context. Neither is in git. You can verify prompt CONSTANTS by
+    hash; you cannot reproduce the lost log's digests.
+
+  * The 150 question ids are NOT resolved — the procedure is fully recovered and
+    deterministic, but instantiating it needs a HotpotQA download plus an
+    execution step, both out of scope. Stored as null with the reason, not
+    guessed.
+
+Also: results/ is gone from disk. It was untracked in the session-start snapshot
+and is no longer there — and it is git-ignored, so history cannot help. Given the
+lost provenance log is the whole reason for this task, you may want to check
+whether that directory still exists elsewhere before it matters.
+
+The dirty-tree override from section 1 is recorded verbatim in the report with the
+caveat that an override of a parameter results.json does not surface (e.g. top_k,
+temperature) would be invisible to this recovery — .env is git-ignored and
+.env.example was deleted in d6efcab itself.
+
+No commit created, HEAD unchanged at 05ea5aa, docs/ contains exactly the two files.

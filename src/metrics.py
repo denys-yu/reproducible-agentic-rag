@@ -19,7 +19,7 @@ import sys
 import warnings
 from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import combinations
 from pathlib import Path
 from typing import Any
@@ -27,6 +27,7 @@ from typing import Any
 import numpy as np
 
 from src.config import Config
+from src.provenance import classify_parse_status
 
 # Categorical fields whose inter-run agreement we report, as (node, parsed-key).
 CATEGORICAL_FIELDS: list[tuple[str, str]] = [
@@ -109,6 +110,10 @@ class Dataset:
     complete_qids: list[str]
     excluded_qids: list[str]
     _slots: dict[tuple[str, str, int], dict[str, Any]]
+    #: One row per LLM call, for the descriptive endpoints of section 6.3/6.4. Kept separate from
+    #: `_slots` because these are per-CALL facts (parse_status, node) that the agreement machinery
+    #: deliberately does not see.
+    rows: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def k(self) -> int:
@@ -117,8 +122,8 @@ class Dataset:
     def _slot(self, arm: str, qid: str, run: int) -> dict[str, Any]:
         return self._slots[(arm, qid, run)]
 
-    def field_tokens(self, arm: str, node: str, key: str, qid: str) -> list[str]:
-        """Hashable token per run for a categorical field (None -> 'None')."""
+    def field_tokens(self, arm: str, node: str, key: str, qid: str) -> list[Any]:
+        """Hashable token per run for a categorical field (a missing value -> `MISSING`)."""
         return [_token(self._slot(arm, qid, r)[node].get(key)) for r in self.run_indices]
 
     def answers(self, arm: str, qid: str, *, normalized: bool) -> list[str]:
@@ -135,19 +140,51 @@ class Dataset:
         return [self._slot(arm, qid, r)["rewrote"] for r in self.run_indices]
 
 
-def _token(value: Any) -> str:
-    return "None" if value is None else str(value)
+class _Missing:
+    """The absence of a model-produced value, as a unique object.
+
+    This was a string (`"None"`) and collided by construction with a real label: `grade.scope`
+    legitimately takes the value `none`, one capital letter away, and any node that ever emitted
+    the literal text `None` would have been silently read as "no answer". A sentinel that lives in
+    the same value space as the data cannot be distinguished from it. This one is a singleton with
+    identity equality, so no string, number, or bool a model can emit is ever equal to it.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid only
+        return "<MISSING>"
+
+
+#: Sole instance. Compare with `is` or `==`; both are identity for this type.
+MISSING = _Missing()
+
+
+def _token(value: Any) -> Any:
+    return MISSING if value is None else str(value)
 
 
 def load_manifests(runs_dir: Path) -> Dataset:
     """Parse all manifests and restrict to questions complete in every run of every arm."""
     runs_dir = Path(runs_dir)
     slots: dict[tuple[str, str, int], dict[str, Any]] = {}
+    rows: list[dict[str, Any]] = []
     arms_seen: set[str] = set()
     runs_seen: set[int] = set()
     qids_seen: set[str] = set()
 
-    for manifest in sorted(runs_dir.glob("*/run_manifest.jsonl")):
+    # `run_manifest*.jsonl`, not `run_manifest.jsonl`: the published series shipped as
+    # `run_manifest_enum_run1.jsonl` and `run_manifest__enum_run3.jsonl` (note the double
+    # underscore). The narrow glob matched none of them and returned an EMPTY dataset without
+    # raising — a silent zero, which is the worst way for an aggregator to fail. The `.jsonl`
+    # suffix still excludes the run-level `run_manifest.json`.
+    manifests = sorted(runs_dir.glob("*/run_manifest*.jsonl"))
+    if not manifests:
+        raise FileNotFoundError(
+            f"No per-call manifests found under {runs_dir} (looked for */run_manifest*.jsonl). "
+            "Refusing to return an empty dataset that would read as 'no disagreement'."
+        )
+    for manifest in manifests:
         for line in manifest.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
@@ -159,11 +196,38 @@ def load_manifests(runs_dir: Path) -> Dataset:
             qids_seen.add(qid)
             slot = slots.setdefault(
                 (arm, qid, run),
-                {"grade": None, "synthesize": None, "synth_raw": None, "rewrote": False},
+                {
+                    "grade": None,
+                    "synthesize": None,
+                    "synth_raw": None,
+                    "rewrote": False,
+                    "grade_parse_status": None,
+                },
+            )
+            rows.append(
+                {
+                    "model": record.get("model"),
+                    "condition": record.get("condition"),
+                    "arm": arm,
+                    "node": record["node"],
+                    "run_index": run,
+                    "question_id": qid,
+                    # The published series predates the `parse_status` field, so it is derived
+                    # from the parsed payload when absent. Derivation uses the SAME classifier the
+                    # live harness writes, so old and new manifests are directly comparable.
+                    "parse_status": (
+                        record.get("parse_status")
+                        or classify_parse_status(record["node"], record.get("parsed"))
+                    ),
+                    "output_shape": record.get("output_shape"),
+                }
             )
             node = record["node"]
             if node == "grade":
                 slot["grade"] = record.get("parsed")
+                slot["grade_parse_status"] = record.get("parse_status") or classify_parse_status(
+                    "grade", record.get("parsed")
+                )
             elif node == "synthesize":
                 slot["synthesize"] = record.get("parsed")
                 slot["synth_raw"] = record.get("raw_response")
@@ -184,42 +248,82 @@ def load_manifests(runs_dir: Path) -> Dataset:
         )
         (complete if ok else excluded).append(qid)
 
-    return Dataset(arms, run_indices, complete, excluded, slots)
+    return Dataset(arms, run_indices, complete, excluded, slots, rows)
 
 
 # --- agreement primitives ---------------------------------------------------------------------
 
 
-def _pairwise_agreement(tokens: Sequence[Any]) -> float:
-    pairs = list(combinations(range(len(tokens)), 2))
+# Pre-registration section 6.1: None is NOT a category. Two failed parses agree on nothing — they
+# are two absences of evidence — yet scoring them as a match made a model that always fails look
+# perfectly stable, inverting the quantity this paper measures. Every agreement primitive below
+# therefore drops any PAIR in which either side is None, and reports coverage alongside the figure.
+_NONE_TOKEN = MISSING  # `_token()` renders a missing value as this unique object
+
+
+def _scored_pairs(tokens: Sequence[Any]) -> list[tuple[int, int]]:
+    """Run-index pairs where NEITHER side is None — the only pairs that carry evidence."""
+    return [
+        (a, b)
+        for a, b in combinations(range(len(tokens)), 2)
+        if tokens[a] != _NONE_TOKEN and tokens[b] != _NONE_TOKEN
+    ]
+
+
+def pair_coverage(per_question: Sequence[Sequence[Any]]) -> float:
+    """Scored pairs over available pairs (section 6.2). NaN when there are no pairs at all."""
+    scored = total = 0
+    for tokens in per_question:
+        scored += len(_scored_pairs(tokens))
+        total += len(list(combinations(range(len(tokens)), 2)))
+    return float("nan") if total == 0 else scored / total
+
+
+def _pairwise_agreement(tokens: Sequence[Any]) -> float | None:
+    """Agreeing fraction over scored pairs; None when no pair carries evidence."""
+    pairs = _scored_pairs(tokens)
     if not pairs:
-        return 1.0
+        return None
     return sum(1 for a, b in pairs if tokens[a] == tokens[b]) / len(pairs)
 
 
 def tar_a(per_question: Sequence[Sequence[Any]]) -> float:
-    """TARa@k: fraction of questions whose k runs are all identical."""
-    if not per_question:
-        return float("nan")
-    return float(np.mean([1.0 if len(set(tokens)) == 1 else 0.0 for tokens in per_question]))
+    """TARa@k: fraction of SCORED questions whose non-None runs are all identical.
+
+    A question contributes only if at least one pair survives the None filter; questions with no
+    evidence are dropped from the denominator rather than counted as agreeing.
+    """
+    values = []
+    for tokens in per_question:
+        pairs = _scored_pairs(tokens)
+        if not pairs:
+            continue
+        present = {tokens[i] for pair in pairs for i in pair}
+        values.append(1.0 if len(present) == 1 else 0.0)
+    return float(np.mean(values)) if values else float("nan")
 
 
 def ema_a(per_question: Sequence[Sequence[Any]]) -> float:
-    """EMA@k: mean over questions of the agreeing-pair fraction."""
-    if not per_question:
-        return float("nan")
-    return float(np.mean([_pairwise_agreement(tokens) for tokens in per_question]))
+    """EMA@k: mean over SCORED questions of the agreeing-pair fraction."""
+    values = [v for v in (_pairwise_agreement(t) for t in per_question) if v is not None]
+    return float(np.mean(values)) if values else float("nan")
+
+
+def _drop_none_positions(a: Sequence[Any], b: Sequence[Any]) -> tuple[list[Any], list[Any]]:
+    """Keep only the positions where BOTH raters produced a real label (section 6.1)."""
+    kept = [(x, y) for x, y in zip(a, b, strict=True) if x != _NONE_TOKEN and y != _NONE_TOKEN]
+    return [x for x, _ in kept], [y for _, y in kept]
 
 
 def cohen_kappa_mean(label_matrix: Sequence[Sequence[Any]]) -> float | None:
-    """Mean pairwise Cohen's kappa across runs; None when undefined (constant labels)."""
+    """Mean pairwise Cohen's kappa across runs; None when undefined (constant labels or no data)."""
     from sklearn.metrics import cohen_kappa_score
 
     values = []
     for r1, r2 in combinations(range(len(label_matrix)), 2):
-        a, b = label_matrix[r1], label_matrix[r2]
-        if len(set(a) | set(b)) <= 1:
-            continue  # single category -> kappa undefined
+        a, b = _drop_none_positions(label_matrix[r1], label_matrix[r2])
+        if len(a) < 2 or len(set(a) | set(b)) <= 1:
+            continue  # no evidence, or single category -> kappa undefined
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             kappa = cohen_kappa_score(a, b)
@@ -245,8 +349,8 @@ def _fast_cohen_kappa_mean(label_matrix: Sequence[Sequence[Any]]) -> float | Non
     """Mean pairwise Cohen's kappa using the fast numpy implementation; None when undefined."""
     values = []
     for r1, r2 in combinations(range(len(label_matrix)), 2):
-        a, b = label_matrix[r1], label_matrix[r2]
-        if len(set(a) | set(b)) <= 1:
+        a, b = _drop_none_positions(label_matrix[r1], label_matrix[r2])
+        if len(a) < 2 or len(set(a) | set(b)) <= 1:
             continue
         kappa = _fast_cohen_kappa(a, b)
         if not math.isnan(kappa):
@@ -256,11 +360,19 @@ def _fast_cohen_kappa_mean(label_matrix: Sequence[Sequence[Any]]) -> float | Non
 
 def fleiss_kappa(label_matrix: Sequence[Sequence[Any]]) -> float | None:
     """Fleiss' kappa over k raters (runs); None when degenerate (single category)."""
+    # Fleiss is an all-rater statistic, so a question is usable only if EVERY run produced a real
+    # label; a question with any None is dropped whole rather than scored on a partial rater set.
+    keep = [
+        q
+        for q in range(len(label_matrix[0]))
+        if all(run[q] != _NONE_TOKEN for run in label_matrix)
+    ]
+    label_matrix = [[run[q] for q in keep] for run in label_matrix]
     categories = sorted({token for run in label_matrix for token in run})
     if len(categories) <= 1:
         return None
     k = len(label_matrix)
-    n = len(label_matrix[0])
+    n = len(label_matrix[0]) if label_matrix else 0
     if k < 2 or n == 0:
         return None
     counts = np.zeros((n, len(categories)), dtype=float)
@@ -286,6 +398,116 @@ def cliffs_delta(a: Sequence[float], b: Sequence[float]) -> float:
     return (greater - less) / (len(a) * len(b))
 
 
+# --- multiplicity correction ------------------------------------------------------------------
+
+#: The secondary family fixed in pre-registration section 1, after synthesize.confidence was
+#: removed as a bijective duplicate of synthesize.scope. FIVE endpoints, not six.
+SECONDARY_FAMILY: tuple[str, ...] = (
+    "grade.needs_more_context",
+    "grade.confidence",
+    "grade.scope",
+    "synthesize.scope",
+    "answer.normalized",
+)
+
+
+def holm_correction(pvalues: dict[str, float], family: Sequence[str] = SECONDARY_FAMILY) -> dict[str, Any]:
+    """Holm-Bonferroni step-down over the registered family. Returns per-endpoint verdicts.
+
+    Sorted ascending, endpoint i (1-based) is compared against alpha / (m - i + 1). The procedure
+    stops at the first non-rejection: everything after it is retained regardless of its own
+    threshold, which is what makes Holm valid and what a naive per-endpoint comparison gets wrong.
+    """
+    alpha = 0.05
+    present = [name for name in family if name in pvalues and pvalues[name] is not None]
+    m = len(present)
+    ordered = sorted(present, key=lambda name: pvalues[name])
+
+    out: dict[str, Any] = {}
+    still_rejecting = True
+    for i, name in enumerate(ordered, start=1):
+        threshold = alpha / (m - i + 1)
+        if still_rejecting and pvalues[name] <= threshold:
+            verdict = "reject"
+        else:
+            still_rejecting = False
+            verdict = "retain"
+        out[name] = {
+            "raw_p": pvalues[name],
+            "rank": i,
+            "threshold": threshold,
+            "holm_adjusted_p": min(1.0, max(
+                pvalues[ordered[j]] * (m - j) for j in range(i)
+            )),
+            "verdict": verdict,
+        }
+    return {"family_size": m, "alpha": alpha, "endpoints": out}
+
+
+# --- descriptive endpoints (pre-registration section 6.3 / 6.4) -------------------------------
+
+
+def unparsed_rate(ds: Dataset) -> dict[str, dict[str, Any]]:
+    """unparsed_rate per (model, condition, arm, node) — section 6.3.
+
+    A first-class descriptive endpoint, NOT part of the corrected family: it takes no correction
+    and supports no stability claim. It is computed over EVERY call, including questions the
+    agreement machinery excluded, because a parse failure is exactly the event that would make a
+    question incomplete and so would otherwise vanish from the record.
+    """
+    buckets: dict[tuple[str, str, str, str], list[str]] = defaultdict(list)
+    for row in ds.rows:
+        key = (row["model"], row["condition"], row["arm"], row["node"])
+        buckets[key].append(row["parse_status"])
+    out: dict[str, dict[str, Any]] = {}
+    for key in sorted(buckets, key=lambda k: tuple(str(x) for x in k)):
+        statuses = buckets[key]
+        unparsed = sum(1 for s in statuses if s == "unparsed")
+        out["|".join(str(x) for x in key)] = {
+            "model": key[0],
+            "condition": key[1],
+            "arm": key[2],
+            "node": key[3],
+            "n": len(statuses),
+            "unparsed": unparsed,
+            "unparsed_rate": unparsed / len(statuses) if statuses else float("nan"),
+            "status_counts": dict(Counter(statuses)),
+        }
+    return out
+
+
+def route_on_missing_signal(ds: Dataset) -> dict[str, Any]:
+    """Cross-tabulate GRADE parse_status against the rewrite decision actually taken — section 6.4.
+
+    When the grade output does not parse, `needs_more_context` is None and the router treats None
+    as False, so the rewrite branch is never taken. That is a routing consequence of a parsing
+    failure, and it is invisible in any agreement number: the arm simply looks decisive. This
+    tabulates it directly, per arm, over every (question, run) slot in the cell.
+    """
+    table: dict[tuple[str, str, bool], int] = defaultdict(int)
+    for (arm, _qid, _run), slot in ds._slots.items():
+        status = slot.get("grade_parse_status")
+        if status is None:
+            continue
+        table[(arm, status, bool(slot["rewrote"]))] += 1
+
+    out: dict[str, Any] = {}
+    for arm in sorted({key[0] for key in table}):
+        rows: dict[str, Any] = {}
+        for status in sorted({key[1] for key in table if key[0] == arm}):
+            rewrote = table.get((arm, status, True), 0)
+            not_rewrote = table.get((arm, status, False), 0)
+            total = rewrote + not_rewrote
+            rows[status] = {
+                "rewrote": rewrote,
+                "did_not_rewrite": not_rewrote,
+                "n": total,
+                "rewrite_rate": rewrote / total if total else float("nan"),
+            }
+        out[arm] = rows
+    return out
+
+
 # --- per-arm metrics --------------------------------------------------------------------------
 
 
@@ -294,14 +516,43 @@ def _matrix(per_question: list[list[Any]], k: int) -> list[list[Any]]:
     return [[per_question[qi][r] for qi in range(len(per_question))] for r in range(k)]
 
 
+#: Below this, a figure is marked in every table and may not support a stability claim (6.2).
+LOW_COVERAGE_THRESHOLD = 0.5
+
+
+def usable_agreement(coverage: float, ema: float) -> float:
+    """coverage x EMA — the probability a question yields a scorable pair that also agrees (6.6).
+
+    Under 6.1 an arm that mostly fails to parse can post EMA 1.000 on the handful of pairs it does
+    produce, which reads as MORE stable than an arm that answers every time. Multiplying by
+    coverage restores the comparison: the luna free grade cell scores 1.000 x 0.133 = 0.133 against
+    the enum arm's 0.933 x 1.000 = 0.933.
+
+    Applied to EMA (and TAR) only. Kappa is chance-corrected and does not compose this way, so it
+    is deliberately left alone.
+    """
+    if coverage != coverage or ema != ema:  # NaN in either input
+        return float("nan")
+    return coverage * ema
+
+
 def _field_metrics(ds: Dataset, arm: str, node: str, key: str) -> dict[str, Any]:
     per_q = [ds.field_tokens(arm, node, key, qid) for qid in ds.complete_qids]
     matrix = _matrix(per_q, ds.k)
+    coverage = pair_coverage(per_q)
+    ema = ema_a(per_q)
     return {
         "tar_a": tar_a(per_q),
-        "ema": ema_a(per_q),
+        "ema": ema,
         "cohen_kappa": cohen_kappa_mean(matrix),
         "fleiss_kappa": fleiss_kappa(matrix),
+        # Section 6.2: coverage travels WITH the figure, never in a footnote. A high agreement over
+        # a handful of surviving pairs is not the same claim as the same number over all of them.
+        "coverage": coverage,
+        "low_coverage": bool(coverage == coverage and coverage < LOW_COVERAGE_THRESHOLD),
+        # Section 6.6: the probability that a question yields a scorable pair AND that pair agrees.
+        # Deliberately NOT computed for kappa, which is chance-corrected and does not compose.
+        "usable_agreement": usable_agreement(coverage, ema),
     }
 
 
@@ -315,6 +566,11 @@ def _answer_metrics(ds: Dataset, arm: str) -> dict[str, Any]:
         "cohen_kappa_normalized": cohen_kappa_mean(_matrix(norm_q, ds.k)),
         "tar_r_raw_answer": tar_a(raw_q),  # all k raw answer strings identical
         "tar_r_raw_response": tar_a(resp_q),  # all k raw response strings identical (most stringent)
+        # An answer always exists (the free parser falls back to the raw text), so coverage here is
+        # 1.0 by construction and usable_agreement collapses to EMA. Reported anyway so every
+        # agreement figure in the output carries the same three columns.
+        "coverage": pair_coverage(norm_q),
+        "usable_agreement": usable_agreement(pair_coverage(norm_q), ema_a(norm_q)),
     }
 
 
@@ -438,9 +694,28 @@ def _compare_agreement(
 ) -> dict[str, Any]:
     enum = _agreement_by_qid(ds, "enum", tokens_fn)
     free = _agreement_by_qid(ds, "free", tokens_fn)
-    qids = ds.complete_qids
-    enum_arr = np.array([enum[q] for q in qids])
-    free_arr = np.array([free[q] for q in qids])
+    # Section 6.1 leaves a question undefined in an arm when no pair survives the None filter. The
+    # test is PAIRED, so such a question is dropped from BOTH arms — comparing a defined value
+    # against an absent one would silently reintroduce the very None-as-data error 6.1 removes.
+    # `paired_coverage` records how much of the question set the comparison actually rests on.
+    qids = [q for q in ds.complete_qids if enum[q] is not None and free[q] is not None]
+    dropped = [q for q in ds.complete_qids if enum[q] is None or free[q] is None]
+    if not qids:
+        return {
+            "delta_mean_agreement": None,
+            "enum_mean_agreement": None,
+            "free_mean_agreement": None,
+            "wilcoxon_stat": None,
+            "wilcoxon_p": None,
+            "agreement_ci95": [None, None],
+            "cliffs_delta": None,
+            "paired_coverage": 0.0,
+            "n_paired": 0,
+            "n_dropped_undefined": len(dropped),
+            "low_coverage": True,
+        }
+    enum_arr = np.array([enum[q] for q in qids], dtype=float)
+    free_arr = np.array([free[q] for q in qids], dtype=float)
     diffs = enum_arr - free_arr
 
     stat, p = _wilcoxon_p(diffs)
@@ -452,6 +727,12 @@ def _compare_agreement(
         "delta_mean_agreement": float(enum_arr.mean() - free_arr.mean()),
         "enum_mean_agreement": float(enum_arr.mean()),
         "free_mean_agreement": float(free_arr.mean()),
+        "paired_coverage": len(qids) / len(ds.complete_qids) if ds.complete_qids else float("nan"),
+        "n_paired": len(qids),
+        "n_dropped_undefined": len(dropped),
+        "low_coverage": bool(
+            ds.complete_qids and len(qids) / len(ds.complete_qids) < LOW_COVERAGE_THRESHOLD
+        ),
         "wilcoxon_stat": stat,
         "wilcoxon_p": p,
         "agreement_ci95": [ci_low, ci_high],
@@ -595,6 +876,9 @@ def compute_metrics(
         comparison["quality"] = _compare_quality(ds, gold, seed)
         results["comparison"] = comparison
 
+    results["unparsed_rate"] = unparsed_rate(ds)
+    results["route_on_missing_signal"] = route_on_missing_signal(ds)
+
     if strata:
         results["strata"] = _strata(ds, meta)
 
@@ -651,10 +935,12 @@ def print_report(results: dict[str, Any]) -> None:
 
     for arm, data in results["per_arm"].items():
         print(f"\n=== arm: {arm} ===  rewrite_rate={_fmt(data['rewrite_rate'])}")
-        print(f"  {'field':<28}{'TARa':>8}{'EMA':>8}{'CohenK':>10}{'FleissK':>10}")
+        print(f"  {'field':<28}{'TARa':>8}{'EMA':>8}{'CohenK':>10}{'FleissK':>10}{'coverage':>10}")
         for label, m in data["fields"].items():
+            flag = "  <LOW COVERAGE>" if m.get("low_coverage") else ""
             print(f"  {label:<28}{_fmt(m['tar_a']):>8}{_fmt(m['ema']):>8}"
-                  f"{_fmt(m['cohen_kappa']):>10}{_fmt(m['fleiss_kappa']):>10}")
+                  f"{_fmt(m['cohen_kappa']):>10}{_fmt(m['fleiss_kappa']):>10}"
+                  f"{_fmt(m.get('coverage')):>10}{flag}")
         a = data["answer"]
         print(f"  {'answer(norm)':<28}{_fmt(a['tar_a_normalized']):>8}{_fmt(a['ema_normalized']):>8}"
               f"{_fmt(a['cohen_kappa_normalized']):>10}")
@@ -666,6 +952,22 @@ def print_report(results: dict[str, Any]) -> None:
               f"Contains={_fmt(q['containment_mean'])}+/-{_fmt(q['containment_std'])}")
         print(f"  answer length: {_fmt(q['answer_len_tokens_mean'])} tokens / "
               f"{_fmt(q['answer_len_chars_mean'])} chars (mean)")
+
+    if results.get("unparsed_rate"):
+        print("\n=== unparsed_rate (descriptive, section 6.3; not in the corrected family) ===")
+        print(f"  {'model':<24}{'condition':<11}{'arm':<6}{'node':<12}{'n':>5}{'unparsed':>10}{'rate':>9}")
+        for entry in results["unparsed_rate"].values():
+            print(f"  {str(entry['model']):<24}{str(entry['condition']):<11}{entry['arm']:<6}"
+                  f"{entry['node']:<12}{entry['n']:>5}{entry['unparsed']:>10}"
+                  f"{_fmt(entry['unparsed_rate']):>9}")
+
+    if results.get("route_on_missing_signal"):
+        print("\n=== route_on_missing_signal (section 6.4): grade parse_status x rewrite taken ===")
+        print(f"  {'arm':<6}{'grade parse_status':<20}{'n':>5}{'rewrote':>9}{'no rewrite':>12}{'rate':>8}")
+        for arm, rows in results["route_on_missing_signal"].items():
+            for status, cell in rows.items():
+                print(f"  {arm:<6}{status:<20}{cell['n']:>5}{cell['rewrote']:>9}"
+                      f"{cell['did_not_rewrite']:>12}{_fmt(cell['rewrite_rate']):>8}")
 
     if results["comparison"]:
         print("\n=== enum vs free (paired by question; delta = enum - free) ===")
@@ -682,6 +984,10 @@ def print_report(results: dict[str, Any]) -> None:
                     f"CI95={[_fmt(x) for x in c['agreement_ci95']]}  cliffs_d={_fmt(c['cliffs_delta'])}")
             if "delta_kappa" in c:
                 line += f"  d_kappa={_fmt(c['delta_kappa'])}"
+            if "paired_coverage" in c:
+                line += f"  cov={_fmt(c['paired_coverage'])}(n={c['n_paired']})"
+                if c.get("low_coverage"):
+                    line += "  <LOW COVERAGE>"
             print(line)
 
 

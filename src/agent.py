@@ -3,8 +3,11 @@
 This module is orchestration + prompts only. Every per-call concern — caching, provenance,
 `system_fingerprint`, structured-vs-free parsing, arm-agnostic results — already lives in
 `llm.call_llm`; the graph just strings `index.retrieve` and `call_llm` together. Both arms run
-through the SAME graph and the SAME prompts; the only arm difference (schema enforcement) is
-handled inside `call_llm` via the `arm` argument.
+through the SAME graph; schema enforcement is handled inside
+`call_llm` via the `arm` argument. The one prompt-level arm difference is `FREE_FORMAT_SUFFIX`:
+the free arm's output-format contract has to be carried in prose because it has no schema to
+carry it, so the suffix is appended to the `grade` and `synthesize` system prompts in the FREE
+arm only. The enum arm's format contract is the schema, and its prompts stay unsuffixed.
 
 The bounded wiring makes 2 LLM calls (grade + synthesize) or 3 (grade + rewrite + synthesize) and
 NEVER grades twice — the second retrieval round skips straight to synthesize.
@@ -20,37 +23,24 @@ from typing import Any, TypedDict
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
-from src.config import Arm, Config, SchemaVariant
+from src.config import Arm, Condition, Config, SchemaVariant
 from src.index import RetrievedChunk, retrieve
 from src.llm import CallResult, call_llm
+from src.prompts import (
+    FREE_FORMAT_SUFFIX as FREE_FORMAT_SUFFIX,  # re-exported: see the prompts note below
+    GRADE_PROMPT as GRADE_PROMPT,
+    REWRITE_PROMPT as REWRITE_PROMPT,
+    SYNTHESIZE_PROMPT as SYNTHESIZE_PROMPT,
+)
+from src.prompts import compose_system_prompt
 from src.schemas import AnswerScope, ConfidenceLevel
 
-# --- pinned prompts (IDENTICAL for both arms) -------------------------------------------------
-
-GRADE_PROMPT = (
-    "You assess whether retrieved context can answer a question. "
-    "Given the question and the retrieved context, judge: "
-    "scope — whether the context covers the question fully, partially, or not at all (none); "
-    "confidence — your confidence (high, medium, low) in that judgement; "
-    "needs_more_context — whether the system should search again with a reformulated query. "
-    "Base your judgement only on the provided context."
-)
-
-REWRITE_PROMPT = (
-    "You reformulate search queries. Given the question and the context retrieved so far, "
-    "write a single improved search query that would retrieve better context to answer the "
-    "question. Provide only the reformulated query."
-)
-
-SYNTHESIZE_PROMPT = (
-    "You answer questions using retrieved context. Given the question and the context, provide: "
-    "answer — the answer to the question; "
-    "confidence — your confidence (high, medium, low); "
-    "scope — whether the context covered the question fully, partially, or none; "
-    "supporting_doc_ids — the doc_ids of the documents you used. "
-    "Use only the provided context."
-)
-
+# --- prompts -----------------------------------------------------------------------------------
+# The prompt text and the condition switch live in `src.prompts`, which holds the wording
+# recovered verbatim from the publishing commit d6efcab. They are re-exported here so existing
+# importers of `agent.GRADE_PROMPT` keep working, but this module no longer owns the text and
+# must not fork it — `preflight.assert_condition_contract` hashes the `src.prompts` values
+# against docs/published_series_reference.json.
 
 def _format_context(chunks: list[RetrievedChunk]) -> str:
     """Render retrieved chunks as title + doc_id + text. Never exposes gold/supporting signals."""
@@ -61,23 +51,29 @@ def _format_context(chunks: list[RetrievedChunk]) -> str:
     )
 
 
-def _grade_messages(question: str, chunks: list[RetrievedChunk]) -> list[dict[str, str]]:
+def _grade_messages(
+    question: str, chunks: list[RetrievedChunk], arm: Arm | str, condition: Condition | str
+) -> list[dict[str, str]]:
     return [
-        {"role": "system", "content": GRADE_PROMPT},
+        {"role": "system", "content": compose_system_prompt("grade", arm, condition)},
         {"role": "user", "content": f"Question: {question}\n\nRetrieved context:\n{_format_context(chunks)}"},
     ]
 
 
-def _rewrite_messages(question: str, chunks: list[RetrievedChunk]) -> list[dict[str, str]]:
+def _rewrite_messages(
+    question: str, chunks: list[RetrievedChunk], arm: Arm | str, condition: Condition | str
+) -> list[dict[str, str]]:
     return [
-        {"role": "system", "content": REWRITE_PROMPT},
+        {"role": "system", "content": compose_system_prompt("rewrite", arm, condition)},
         {"role": "user", "content": f"Question: {question}\n\nContext retrieved so far:\n{_format_context(chunks)}"},
     ]
 
 
-def _synthesize_messages(question: str, chunks: list[RetrievedChunk]) -> list[dict[str, str]]:
+def _synthesize_messages(
+    question: str, chunks: list[RetrievedChunk], arm: Arm | str, condition: Condition | str
+) -> list[dict[str, str]]:
     return [
-        {"role": "system", "content": SYNTHESIZE_PROMPT},
+        {"role": "system", "content": compose_system_prompt("synthesize", arm, condition)},
         {"role": "user", "content": f"Question: {question}\n\nContext:\n{_format_context(chunks)}"},
     ]
 
@@ -91,6 +87,7 @@ class AgentState(TypedDict):
     question: str
     question_id: str
     arm: str
+    condition: str
     variant: SchemaVariant
     run_id: str
     current_query: str
@@ -128,14 +125,20 @@ def initial_state(
     question_id: str,
     *,
     arm: Arm | str,
+    condition: Condition | str,
     variant: SchemaVariant,
     run_id: str,
 ) -> AgentState:
-    """Build the starting state for one question (current_query starts as the question)."""
+    """Build the starting state for one question (current_query starts as the question).
+
+    `condition` is required: the prompt wiring in force must be stated explicitly for every run,
+    and it is carried in the state so each node composes under the same one.
+    """
     return AgentState(
         question=question,
         question_id=question_id,
         arm=arm.value if isinstance(arm, Arm) else str(arm),
+        condition=Condition(condition).value,
         variant=variant,
         run_id=run_id,
         current_query=question,
@@ -217,6 +220,7 @@ def build_agent(
             variant=state["variant"],
             messages=messages,
             config=agent_config,
+            condition=state["condition"],  # carried in state so every node logs the same wiring
             logger=_logger_from(config),
             run_id=state["run_id"],
             question_id=state["question_id"],
@@ -227,16 +231,22 @@ def build_agent(
         )
 
     def grade_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
-        messages = _grade_messages(state["question"], state["retrieved"])
+        messages = _grade_messages(
+            state["question"], state["retrieved"], state["arm"], state["condition"]
+        )
         return {"grade": _call(state, config, "grade", messages)}
 
     def rewrite_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
-        messages = _rewrite_messages(state["question"], state["retrieved"])
+        messages = _rewrite_messages(
+            state["question"], state["retrieved"], state["arm"], state["condition"]
+        )
         result = _call(state, config, "rewrite", messages)
         return {"current_query": result.query, "rewrite_count": 1}
 
     def synthesize_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
-        messages = _synthesize_messages(state["question"], state["retrieved"])
+        messages = _synthesize_messages(
+            state["question"], state["retrieved"], state["arm"], state["condition"]
+        )
         return {"answer": _call(state, config, "synthesize", messages)}
 
     graph = StateGraph(AgentState)
@@ -263,6 +273,7 @@ def run_question(
     question_id: str,
     *,
     arm: Arm | str,
+    condition: Condition | str,
     variant: SchemaVariant,
     run_id: str,
     logger: Any,
@@ -272,7 +283,9 @@ def run_question(
     The provenance JSONL written via `logger` is the canonical per-call record the metrics
     consume; the returned AgentResult is only a convenience summary.
     """
-    state = initial_state(question, question_id, arm=arm, variant=variant, run_id=run_id)
+    state = initial_state(
+        question, question_id, arm=arm, condition=condition, variant=variant, run_id=run_id
+    )
     final: AgentState = graph.invoke(state, config={"configurable": {"logger": logger}})
 
     answer = final.get("answer")
@@ -295,16 +308,20 @@ def run_question(
 # --- CLI: one real question end-to-end --------------------------------------------------------
 
 
-def _run_smoke(question_id: str, arm: str) -> None:
+def _run_smoke(question_id: str, arm: str, condition: str) -> None:
     from src.cache import CachingEmbedder
-    from src.data import load_sampled_questions
+    from src.data import load_questions_by_ids
     from src.index import OpenAIEmbedder, open_collection
+    from src.preflight import load_pinned_question_ids
     from src.provenance import ProvenanceLogger, run_manifest_path
 
     config = Config()
-    questions = {q["question_id"]: q for q in load_sampled_questions(config)}
+    # Pinned ids, never the sampler — the smoke path must address the same question set the
+    # experiment does, or a green smoke run says nothing about the run that follows it.
+    pinned_ids = load_pinned_question_ids()
+    questions = {q["question_id"]: q for q in load_questions_by_ids(config, pinned_ids)}
     if question_id not in questions:
-        raise SystemExit(f"question_id {question_id!r} is not in the sampled set / index.")
+        raise SystemExit(f"question_id {question_id!r} is not in the pinned set / index.")
     question = questions[question_id]["question"]
 
     collection = open_collection(config)
@@ -319,6 +336,7 @@ def _run_smoke(question_id: str, arm: str) -> None:
             question,
             question_id,
             arm=arm,
+            condition=condition,
             variant=config.schema_variant,
             run_id=run_id,
             logger=logger,
@@ -354,8 +372,13 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--smoke", metavar="QUESTION_ID", required=True, help="question_id to run")
     parser.add_argument("--arm", choices=[Arm.FREE.value, Arm.ENUM.value], default=Arm.FREE.value)
+    parser.add_argument(
+        "--condition",
+        required=True,  # never defaulted: the prompt wiring must always be stated
+        choices=[c.value for c in Condition],
+    )
     args = parser.parse_args(argv)
-    _run_smoke(args.smoke, args.arm)
+    _run_smoke(args.smoke, args.arm, args.condition)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,23 @@
+{
+  "condition": "published",
+  "model_profile": "gpt-4o-mini",
+  "model_id": "gpt-4o-mini-2024-07-18",
+  "arm": "free",
+  "node": "rewrite",
+  "required_params": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 42
+  },
+  "captured_params": {
+    "model": "gpt-4o-mini-2024-07-18",
+    "stream": false,
+    "seed": 42,
+    "top_p": 1.0,
+    "temperature": 0.0
+  },
+  "system_prompt": "You reformulate search queries. Given the question and the context retrieved so far, write a single improved search query that would retrieve better context to answer the question. Provide only the reformulated query.",
+  "system_prompt_sha256": "d92149e55bce4a3eee160688bc3ceb098ebf510d7f2df0f617a4f6422cd0e097",
+  "sent": false,
+  "note": "Body built via langchain_openai's own request builder. NEVER sent."
+}
