@@ -119,3 +119,17 @@ EMA 0.933 at coverage 1.000 in the enum arm.
 the full series. At a per-call parse rate near 0.233 and five runs, a question yields at least
 one scorable pair with probability near 0.33. Claims about that cell will therefore rest on
 unparsed_rate, usable_agreement and routing, not on kappa. Registered before execution.
+
+6.8 Degenerate routing. route_stability remains the pre-registered primary endpoint and is
+reported as registered. It is always reported beside rewrite_rate. A cell whose rewrite_rate
+falls below 0.10 or rises above 0.90 is marked as degenerate routing, and its stability figure
+does not support any claim about control quality, because a router that almost never fires is
+trivially stable. Evidence forcing this amendment: on the second series the luna free arm under
+published prompts scores route_stability 0.8867 at rewrite_rate 0.072, above the 0.8333 of the
+working 4o-mini free arm at rewrite_rate 0.2947. The higher figure reflects collapse, not
+control. This amendment is post hoc with respect to the second series and is recorded as such.
+
+6.9 Forecast F4 is at risk and will be adjudicated on both readings. Read as rewrite_rate, the
+enum-free direction reverses between models: on 4o-mini free exceeds enum, on luna enum exceeds
+free. Read as route_stability, the direction holds in both. Both readings are reported and the
+forecast is scored as partially refuted rather than reinterpreted.
