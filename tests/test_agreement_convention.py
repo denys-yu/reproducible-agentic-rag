@@ -16,6 +16,7 @@ import pytest
 
 from src.metrics import (
     LOW_COVERAGE_THRESHOLD,
+    MISSING,
     Dataset,
     _pairwise_agreement,
     cohen_kappa_mean,
@@ -27,7 +28,9 @@ from src.metrics import (
     unparsed_rate,
 )
 
-NONE = "None"
+# The sentinel is the real one, imported, never a literal: writing `"None"` here would recreate
+# the very collision 6.1 exists to prevent, and `grade.scope` really does take the value `none`.
+NONE = MISSING
 
 
 # --- 6.1 None is not a category ----------------------------------------------------------------

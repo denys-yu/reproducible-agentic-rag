@@ -122,8 +122,8 @@ class Dataset:
     def _slot(self, arm: str, qid: str, run: int) -> dict[str, Any]:
         return self._slots[(arm, qid, run)]
 
-    def field_tokens(self, arm: str, node: str, key: str, qid: str) -> list[str]:
-        """Hashable token per run for a categorical field (None -> 'None')."""
+    def field_tokens(self, arm: str, node: str, key: str, qid: str) -> list[Any]:
+        """Hashable token per run for a categorical field (a missing value -> `MISSING`)."""
         return [_token(self._slot(arm, qid, r)[node].get(key)) for r in self.run_indices]
 
     def answers(self, arm: str, qid: str, *, normalized: bool) -> list[str]:
@@ -140,8 +140,28 @@ class Dataset:
         return [self._slot(arm, qid, r)["rewrote"] for r in self.run_indices]
 
 
-def _token(value: Any) -> str:
-    return "None" if value is None else str(value)
+class _Missing:
+    """The absence of a model-produced value, as a unique object.
+
+    This was a string (`"None"`) and collided by construction with a real label: `grade.scope`
+    legitimately takes the value `none`, one capital letter away, and any node that ever emitted
+    the literal text `None` would have been silently read as "no answer". A sentinel that lives in
+    the same value space as the data cannot be distinguished from it. This one is a singleton with
+    identity equality, so no string, number, or bool a model can emit is ever equal to it.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid only
+        return "<MISSING>"
+
+
+#: Sole instance. Compare with `is` or `==`; both are identity for this type.
+MISSING = _Missing()
+
+
+def _token(value: Any) -> Any:
+    return MISSING if value is None else str(value)
 
 
 def load_manifests(runs_dir: Path) -> Dataset:
@@ -238,7 +258,7 @@ def load_manifests(runs_dir: Path) -> Dataset:
 # are two absences of evidence — yet scoring them as a match made a model that always fails look
 # perfectly stable, inverting the quantity this paper measures. Every agreement primitive below
 # therefore drops any PAIR in which either side is None, and reports coverage alongside the figure.
-_NONE_TOKEN = "None"  # `_token()` renders a missing value as this string
+_NONE_TOKEN = MISSING  # `_token()` renders a missing value as this unique object
 
 
 def _scored_pairs(tokens: Sequence[Any]) -> list[tuple[int, int]]:
