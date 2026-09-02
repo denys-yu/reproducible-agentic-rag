@@ -1,0 +1,209 @@
+SECOND SERIES AGGREGATION — 2026-08-24T14:48:18Z
+HEAD=2cd0aeb; read-only on runs/, runs2/, runs_smoke/; no API calls; no commit.
+
+============================================================================================================
+SECOND SERIES AGGREGATION
+============================================================================================================
+  4omini_published     arms=['enum', 'free']  k=5  complete=150  records=3399
+  luna_published       arms=['enum', 'free']  k=5  complete=150  records=3307
+  luna_ablation        arms=['free']  k=5  complete=150  records=1764
+  4omini_ablation      arms=['free']  k=5  complete=150  records=1712
+
+============================================================================================================
+[1] FORMAT-GUESS STABILITY — per question, how many of 5 runs returned json_object
+============================================================================================================
+  luna / published / free / grade   (750 calls: 605 json_object, 145 labeled_lines)
+    json_object runs  questions    share
+                   0          9   0.0600
+                   1          7   0.0467
+                   2          8   0.0533
+                   3         11   0.0733
+                   4         26   0.1733
+                   5         89   0.5933
+               TOTAL        150
+  shape-stable across all 5 runs (all-json or all-labeled): 98 of 150 = 0.6533
+  shape-SPLIT within a question (counts 1-4)              : 52 of 150 = 0.3467
+  Decoding is temperature 0, so a split inside one question is format nondeterminism.
+
+  runs/ 4o-mini / published / free / grade   (labeled_lines 750/750)
+  labeled_lines runs  questions
+                   0          0
+                   1          0
+                   2          0
+                   3          0
+                   4          0
+                   5        150
+  shape-stable across all 5 runs: 150 of 150 = 1.0000
+
+============================================================================================================
+[2] ROUTE STABILITY + rewrite_rate, degeneracy per prereg 6.8
+============================================================================================================
+  cell                 arm     route_stab   flips  rewrite_rate   degenerate routing
+  4omini_published     enum        0.9733       4        0.2373                     
+  4omini_published     free        0.8333      25        0.2947                     
+  luna_published       enum        0.9200      12        0.3373                     
+  luna_published       free        0.8867      17        0.0720           DEGENERATE
+  luna_ablation        free        0.9267      11        0.3520                     
+  4omini_ablation      free        0.9333      10        0.2827                     
+
+  Exact McNemar on the 150 paired questions (outcome = route stable across 5 runs)
+  comparison                                              b    c    exact p  note
+  4omini_published enum vs free                          24    3  4.923e-05  
+  luna_published enum vs free                            16   11     0.4421  involves DEGENERATE routing (luna_published/free, rr=0.072)
+  luna free: published vs ablation                        8   14     0.2863  involves DEGENERATE routing (luna_published/free, rr=0.072)
+  4omini free: published vs ablation                      7   22    0.00813  
+
+============================================================================================================
+[3] FAMILY TABLE — kappa, EMA, coverage, usable_agreement; Holm over the 5 endpoints
+============================================================================================================
+  cell                 arm    endpoint                        kappa      EMA    cover   usable  flag
+  4omini_published     enum   grade.needs_more_context       0.9705   0.9893   1.0000   0.9893  
+  4omini_published     enum   grade.confidence               0.9099   0.9653   1.0000   0.9653  
+  4omini_published     enum   grade.scope                    0.9683   0.9827   1.0000   0.9827  
+  4omini_published     enum   synthesize.scope               0.8583   0.9853   1.0000   0.9853  
+  4omini_published     enum   answer.normalized              0.8505   0.8513   1.0000   0.8513  
+  4omini_published     free   grade.needs_more_context       0.8106   0.9213   0.9973   0.9189  
+  4omini_published     free   grade.confidence               0.6512   0.9120   0.9973   0.9096  
+  4omini_published     free   grade.scope                    0.9235   0.9560   0.9973   0.9535  
+  4omini_published     free   synthesize.scope               0.8274   0.9773   1.0000   0.9773  
+  4omini_published     free   answer.normalized              0.8250   0.8260   1.0000   0.8260  
+  luna_published       enum   grade.needs_more_context       0.9105   0.9600   1.0000   0.9600  
+  luna_published       enum   grade.confidence               0.6121   0.9907   1.0000   0.9907  
+  luna_published       enum   grade.scope                    0.8801   0.9427   1.0000   0.9427  
+  luna_published       enum   synthesize.scope               0.7663   0.9533   1.0000   0.9533  
+  luna_published       enum   answer.normalized              0.4870   0.4887   1.0000   0.4887  
+  luna_published       free   grade.needs_more_context       0.9511   0.9571   0.1113   0.1066  <LOW COVERAGE
+  luna_published       free   grade.confidence               0.2443   0.9429   0.1113   0.1050  <LOW COVERAGE
+  luna_published       free   grade.scope                    0.9276   0.9381   0.1113   0.1044  <LOW COVERAGE
+  luna_published       free   synthesize.scope               0.7971   0.9373   1.0000   0.9373  
+  luna_published       free   answer.normalized              0.6178   0.6193   1.0000   0.6193  
+  luna_ablation        free   grade.needs_more_context       0.9182   0.9627   1.0000   0.9627  
+  luna_ablation        free   grade.confidence               0.7760   0.9920   1.0000   0.9920  
+  luna_ablation        free   grade.scope                    0.9241   0.9627   1.0000   0.9627  
+  luna_ablation        free   synthesize.scope               0.7599   0.9453   1.0000   0.9453  
+  luna_ablation        free   answer.normalized              0.5617   0.5633   1.0000   0.5633  
+  4omini_ablation      free   grade.needs_more_context       0.9080   0.9627   1.0000   0.9627  
+  4omini_ablation      free   grade.confidence               0.8086   0.9600   1.0000   0.9600  
+  4omini_ablation      free   grade.scope                    0.9558   0.9755   0.9693   0.9456  
+  4omini_ablation      free   synthesize.scope               0.9161   0.9900   1.0000   0.9900  
+  4omini_ablation      free   answer.normalized              0.8572   0.8580   1.0000   0.8580  
+
+  Holm over the 5 endpoints, per cell that has BOTH arms:
+    4omini_published (family=5, alpha=0.05):
+      grade.needs_more_context   raw=5.893e-05  thr=0.01000  -> REJECT  cov=1.000
+      grade.confidence           raw=0.0095249  thr=0.01250  -> REJECT  cov=1.000
+      grade.scope                raw=0.039757  thr=0.01667  -> RETAIN  cov=1.000
+      answer.normalized          raw=0.28692  thr=0.02500  -> RETAIN  cov=1.000
+      synthesize.scope           raw=0.48223  thr=0.05000  -> RETAIN  cov=1.000
+    luna_published (family=5, alpha=0.05):
+      answer.normalized          raw=6.9913e-05  thr=0.01000  -> REJECT  cov=1.000
+      grade.confidence           raw=0.35727  thr=0.01250  -> RETAIN  cov=0.233  <LOW COVERAGE
+      synthesize.scope           raw=0.48418  thr=0.01667  -> RETAIN  cov=1.000
+      grade.scope                raw=0.49822  thr=0.02500  -> RETAIN  cov=0.233  <LOW COVERAGE
+      grade.needs_more_context   raw=0.59298  thr=0.05000  -> RETAIN  cov=0.233  <LOW COVERAGE
+    luna_ablation: single arm, no enum-free comparison
+    4omini_ablation: single arm, no enum-free comparison
+
+============================================================================================================
+[5] BIJECTION — synthesize.scope x synthesize.confidence
+============================================================================================================
+  luna_published / enum  (n=750)
+      full     -> high       668
+      partial  -> medium      28
+      partial  -> high        17   <-- BREAK
+      partial  -> low         15   <-- BREAK
+      none     -> high        12   <-- BREAK
+      none     -> low         10
+      breaks: 44 of 750  (0.0587)
+  luna_ablation / free  (n=750)
+      full     -> high       653
+      partial  -> high        40   <-- BREAK
+      partial  -> medium      29
+      partial  -> low         16   <-- BREAK
+      none     -> high         9   <-- BREAK
+      none     -> low          3
+      breaks: 65 of 750  (0.0867)
+  4omini_ablation / free  (n=750)
+      full     -> high       703
+      none     -> low         21
+      partial  -> medium      21
+      none     -> medium       5   <-- BREAK
+      breaks: 5 of 750  (0.0067)
+  4omini_published / enum  (n=750)
+      full     -> high       709
+      none     -> low         21
+      partial  -> medium      20
+      breaks: 0 of 750  (0.0000)
+
+============================================================================================================
+[6] SYSTEM_FINGERPRINT ASSOCIATION — 4omini_ablation only (luna returns null throughout)
+============================================================================================================
+  distinct fingerprints: 50  over 1712 calls
+      fp_72f05258df          724  0.4229
+      fp_4c65b5e150           51  0.0298
+      fp_79c524b23a           45  0.0263
+      fp_dc34d11855           43  0.0251
+      fp_c400bf5046           42  0.0245
+      fp_503b3989ad           35  0.0204
+      fp_c881474fd1           34  0.0199
+      fp_18fc98c6d2           33  0.0193
+      fp_0950b7f384           28  0.0164
+      fp_3cb74a061c           28  0.0164
+      fp_d26e8aed44           28  0.0164
+      fp_e7eb9f2bc2           28  0.0164
+      fp_9709ac0e8b           25  0.0146
+      fp_f282d56213           25  0.0146
+      fp_6339e52f56           25  0.0146
+      fp_07b4de2b86           24  0.0140
+      fp_6ec6bfb92d           24  0.0140
+      fp_a2b728f9dd           23  0.0134
+      fp_c73dd82b09           23  0.0134
+      fp_c980d3075f           23  0.0134
+      fp_b8c19d84b4           22  0.0129
+      fp_836208cd2a           22  0.0129
+      fp_98fa25fd02           22  0.0129
+      fp_98f538dc1a           22  0.0129
+      fp_c5ea001cd5           20  0.0117
+      fp_d6d3876e6e           20  0.0117
+      fp_66ee548660           20  0.0117
+      fp_786821a2b4           19  0.0111
+      fp_5691373d70           19  0.0111
+      fp_f92f00b8af           19  0.0111
+      fp_5259353f0d           17  0.0099
+      fp_5d8d1116aa           15  0.0088
+      fp_788bf556eb           14  0.0082
+      fp_ef296e2731           14  0.0082
+      fp_830d456649           14  0.0082
+      fp_83afc1e615           13  0.0076
+      fp_2b114d87de           12  0.0070
+      fp_512c9c3baf           12  0.0070
+      fp_ab203f6842           12  0.0070
+      fp_33a9b387c2           11  0.0064
+      fp_84fc3dabbe           10  0.0058
+      fp_02ae59e84c           10  0.0058
+      fp_b1b99e3b92            8  0.0047
+      fp_fabbcdf5d9            6  0.0035
+      fp_7e3eefb104            5  0.0029
+      fp_25b7d0bd77            5  0.0029
+      fp_c6b5b9a933            5  0.0029
+      fp_34bdf1a69c            5  0.0029
+      fp_4147058500            5  0.0029
+      fp_ab0a2ab924            3  0.0018
+
+  Does the fingerprint vary WITHIN a (question, node) across runs?
+      (question,node) slots with >1 fingerprint across the 5 runs: 67 of 300 = 0.2233
+
+  Route stability vs fingerprint homogeneity (grade node):
+                              route stable  route flipped
+      one fingerprint                  111              6
+      multiple fingerprints             29              4
+      flip rate | one fingerprint      : 0.0513
+      flip rate | multiple fingerprints: 0.1212
+
+=== F2 paired comparison ===
+paired questions usable in all three arms: 150 of 150
+  enum      mean agreement = 0.9893
+  free pub  mean agreement = 0.9213   gap vs enum = +0.0680
+  free abl  mean agreement = 0.9627   gap vs enum = +0.0267
+  published (enum - free): Wilcoxon stat=28.5 p=5.893e-05  nonzero diffs=27
+  ablation  (enum - free): Wilcoxon stat=12.0 p=0.01651  nonzero diffs=13

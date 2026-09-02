@@ -1,0 +1,47 @@
+FINAL ANALYSIS — 2026-08-24T15:31:39Z
+HEAD=2cd0aeb; read-only on runs/ and runs2/; no API calls; no commit.
+
+========================================================================================================
+[1] EXACT McNEMAR — route stability, ablation/free (appendix) vs published/enum (schema)
+========================================================================================================
+  Outcome per question: route decision identical across all 5 runs.
+  b = stable under appendix but flipped under schema; c = the reverse.
+
+  model           appendix stab  schema stab    b    c    exact p  verdict
+  gpt-4o-mini            0.9333       0.9733    3    9      0.146  INDISTINGUISHABLE
+  gpt-5.6-luna           0.9267       0.9200    7    6          1  INDISTINGUISHABLE
+
+========================================================================================================
+[2] PAIRED WILCOXON — grade.needs_more_context agreement, appendix vs schema
+========================================================================================================
+  model           n paired  appendix   schema     delta     stat           p  verdict
+  gpt-4o-mini          150    0.9627   0.9893   -0.0267     12.0     0.01651  appendix WORSE
+      coverage: appendix 150/150 usable, schema 150/150 usable; nonzero differences 13
+  gpt-5.6-luna         150    0.9627   0.9600   +0.0027     67.0     0.95809  INDISTINGUISHABLE
+      coverage: appendix 150/150 usable, schema 150/150 usable; nonzero differences 16
+
+========================================================================================================
+[3] ANSWER LENGTH AND QUALITY — per cell and arm
+========================================================================================================
+  cell                 arm      tokens     chars       EM       F1  contains  ans.norm EMA
+  4omini_published     enum      14.59     97.52   0.0280   0.2580    0.6653        0.8513
+  4omini_published     free      11.86     79.63   0.1360   0.3656    0.6480        0.8260
+  luna_published       enum      13.93     95.04   0.0680   0.3035    0.6947        0.4887
+  luna_published       free       9.59     73.18   0.2067   0.4390    0.6467        0.6193
+  luna_ablation        free       9.60     71.23   0.2240   0.4577    0.6813        0.5633
+  4omini_ablation      free      11.65     78.12   0.1360   0.3659    0.6533        0.8580
+
+========================================================================================================
+[3b] luna answer.normalized REVERSAL — free 0.6193 vs enum 0.4887
+========================================================================================================
+  arm     ans.norm EMA   tokens     chars  distinct norm answers/q
+  enum          0.4887    13.93     95.04                    2.473
+  free          0.6193     9.59     73.18                    2.047
+
+  Empty / degenerate normalized answers (would inflate agreement if common):
+      enum   empty normalized answers: 0 of 750
+      free   empty normalized answers: 0 of 750
+
+  Length correlation with per-question answer agreement (luna published):
+      enum   mean tokens/q=15.38  Pearson r(length, agreement)=-0.5472
+      free   mean tokens/q=11.70  Pearson r(length, agreement)=-0.4287
